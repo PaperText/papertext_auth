@@ -22,32 +22,34 @@ class AuthImplemented(BaseAuth):
     def __init__(self, cfg: Dict[str, Any]):
         self.engine = create_engine(
             f"postgresql://{cfg.DB.username}:{cfg.DB.password}@{cfg.DB.host}:{cfg.DB.port}/{cfg.DB.dbname}",
-            echo=True,
+            # echo=True,
             client_encoding="utf8",
         )
         self.meta = MetaData(bind=self.engine, reflect=True)
 
-        if "users" not in self.meta.tables:
-            self.users = Table(
-                "users",
-                self.meta,
-                Column("id", Integer, primary_key=True),
-                Column("username", String),
-                Column("password", String),
-                Column("loa", Integer),
-                Column("org", Integer),
-            )
-        else:
-            self.users = self.meta.tables['users']
-        self.meta.create_all(self.engine)
-        if len([u for u in self.engine.execute(self.users.select())]) == 0:
-            self.engine.execute(
-                self.users.insert().values(username='guest', password="guest", loa=0, org=0)
-            )
+
+        self.users = Table(
+            "users",
+            self.meta,
+            Column("id", Integer, primary_key=True),
+            Column("username", String(256)),
+            Column("hashed_password", String),
+            Column("salt", String),
+            Column("loa", Integer),
+            Column("org", Integer),
+            extend_existing=True
+        )
+
+        self.meta.create_all(self.engine, checkfirst=True)
+
+        # if len([u for u in self.engine.execute(self.users.select())]) == 0:
+            # self.engine.execute(
+                # self.users.insert().values(username='guest', password="guest", loa=0, org=0)
+            # )
         for table in self.meta.tables:
             print(table)
-        for user in self.engine.execute(self.users.select()):
-            print(user)
+        # for user in self.engine.execute(self.users.select()):
+            # print(user)
 
     def setup(self, cfg: Dict[str, Any]) -> NoReturn:
         pass
