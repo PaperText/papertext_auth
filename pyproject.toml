@@ -8,9 +8,13 @@ authors = ["Danil Kireev <danilunrandom@gmail.com>"]
 lint = "papertext_auth.__main__:flake_lint"
 fix = "papertext_auth.__main__:fix_all"
 
+[tool.poetry.plugins."paperback.modules"]
+auth = "papertext_auth:AuthImplemented"
+
 [tool.poetry.dependencies]
 python = "^3.8"
 sqlalchemy = "^1.3.13"
+psycopg2-binary = "^2.8.4"
 
 [tool.poetry.dev-dependencies]
 pytest = "^5.2"
