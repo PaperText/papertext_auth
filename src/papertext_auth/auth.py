@@ -1,9 +1,20 @@
-from typing import Any, Callable, Dict, List, NoReturn, Tuple
+from typing import Any, Callable, Dict, List, Mapping, NoReturn, Tuple
 
-from fastapi import Header
-from sqlalchemy import Column, Integer, MetaData, String, Table, create_engine
+from fastapi import FastAPI, Header
+from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import (
+    Column,
+    ForeignKey,
+    Integer,
+    MetaData,
+    String,
+    Table,
+    create_engine,
+)
 
-from paperback import BaseAuth
+from paperback import BaseAuth, NewUser
+
+from .crypto import crypt_context
 
 
 class AuthImplemented(BaseAuth):
@@ -17,52 +28,54 @@ class AuthImplemented(BaseAuth):
             "password": "password",
             "dbname": "postgres",
         },
+        "crypto": {"default": "argon2"},
     }
 
-    def __init__(self, cfg: Dict[str, Any]):
+    def __init__(self, cfg: Mapping[str, Any]):
+        crypt_context.update(default=cfg.crypto.default)
+
         self.engine = create_engine(
             f"postgresql://{cfg.DB.username}:{cfg.DB.password}@{cfg.DB.host}:{cfg.DB.port}/{cfg.DB.dbname}",
             # echo=True,
-            client_encoding="utf8",
         )
-        self.meta = MetaData(bind=self.engine, reflect=True)
-
-
+        self.metadata = MetaData(bind=self.engine)
         self.users = Table(
             "users",
-            self.meta,
+            self.metadata,
             Column("id", Integer, primary_key=True),
             Column("username", String(256)),
             Column("hashed_password", String),
-            Column("salt", String),
-            Column("loa", Integer),
-            Column("org", Integer),
-            extend_existing=True
+            Column("access_level", Integer),
+            Column("organization", String(256)),
         )
 
-        self.meta.create_all(self.engine, checkfirst=True)
+        self.tokens = Table(
+            "tokens",
+            self.metadata,
+            Column("id", Integer, primary_key=True),
+            Column("token", String),
+            Column("location", String),
+            Column("device", String),
+        )
+        self.metadata.create_all(self.engine)
 
-        # if len([u for u in self.engine.execute(self.users.select())]) == 0:
-            # self.engine.execute(
-                # self.users.insert().values(username='guest', password="guest", loa=0, org=0)
-            # )
-        for table in self.meta.tables:
-            print(table)
-        # for user in self.engine.execute(self.users.select()):
-            # print(user)
-
-    def setup(self, cfg: Dict[str, Any]) -> NoReturn:
-        pass
-
-    def create_user(
+    async def create_user(
         self,
-        email: str,
+        username: str,
         password: str,
-        name: str = "",
-        organization: str = 0,
         access_level: int = 0,
-    ) -> bool:
-        pass
+        organization: str = "Public",
+    ):
+        ins = self.users.insert().values(
+            username=username,
+            hashed_password=crypt_context.hash(password),
+            access_level=access_level,
+            organization=organization,
+        )
+        print(ins)
+        conn = self.engine.connect()
+        res = conn.execute(ins)
+        print(res)
 
     def read_user(self, email: str) -> Dict[str, Tuple[str, int]]:
         pass
@@ -89,13 +102,23 @@ class AuthImplemented(BaseAuth):
     def sign_out_everywhere(self,) -> bool:
         pass
 
+    def sign_up(self, user: NewUser) -> str:
+        pass
+
     def remove_token(self, token: str) -> bool:
         pass
 
     def remove_tokens(self, token: List[str]) -> bool:
         pass
 
-    def test_token(
-        self, greater_or_equal: int, one_of: List[int]
-    ) -> Callable[[Header], NoReturn]:
+    def add_CORS(self, api: FastAPI) -> NoReturn:
+        api.add_middleware(
+            CORSMiddleware,
+            allow_origins=["*"],
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
+
+    def test_token(self, greater_or_equal: int, one_of: List[int]) -> bool:
         pass
