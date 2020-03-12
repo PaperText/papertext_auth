@@ -6,10 +6,10 @@ from subprocess import call
 path = Path(__file__) / ".." / ".."
 path = path.resolve()
 
-src_path = path / ".."
-src_path = src_path.resolve()
+source_path = path / ".."
+source_path = source_path.resolve()
 
-pyproject_path = src_path / "pyproject.toml"
+pyproject_path = source_path / "pyproject.toml"
 pyproject_path = pyproject_path.resolve()
 
 
@@ -22,7 +22,7 @@ def fix_black():
 
 
 def fix_isort():
-    call(f"python -m isort -rc {src_path}".split(" "))
+    call(f"python -m isort -rc {source_path}".split(" "))
 
 
 def fix_all():
