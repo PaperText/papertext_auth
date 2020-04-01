@@ -2,7 +2,7 @@
 name = "papertext_auth"
 version = "0.1.0"
 description = ""
-authors = ["Danil Kireev <danilunrandom@gmail.com>"]
+authors = ["Danil Kireev <kireev@isa.ru>"]
 
 [tool.poetry.scripts]
 lint = "papertext_auth.__main__:flake_lint"
