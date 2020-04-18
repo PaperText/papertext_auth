@@ -1,10 +1,13 @@
-from typing import Any, Callable, Dict, List, Mapping, NoReturn, Tuple, Union
+from logging import getLogger
+from pathlib import Path
+from types import SimpleNamespace
+from typing import List, Mapping, NoReturn, Union
 
-from fastapi import FastAPI, Header, status
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from paperback import BaseAuth, NewUser, UserInfo
 from sqlalchemy import (
     Column,
-    ForeignKey,
     Integer,
     MetaData,
     String,
@@ -12,31 +15,48 @@ from sqlalchemy import (
     create_engine,
 )
 
-from paperback import BaseAuth, NewUser, UserInfo
-
 from .crypto import crypt_context
 
 
 class AuthImplemented(BaseAuth):
-    DEFAULTS = {
-        "test": False,
-        "DB": {
-            "type": "PostgreSQL",
+    DEFAULTS: Mapping[str, Union[str, Mapping[str, str]]] = {
+        "db": {
             "host": "127.0.0.1",
             "port": "5432",
             "username": "postgres",
             "password": "password",
-            "dbname": "postgres",
+            "dbname": "papertext",
         },
-        "crypto": {"default": "argon2"},
+        "crypto": {"algo": "argon2"},
+        "token": {"algo": "ecsda", "generate_keys": "False", "regenerate_keys": "False"},
     }
 
-    def __init__(self, cfg: Mapping[str, Any]):
-        crypt_context.update(default=cfg.crypto.default)
+    def __init__(self, cfg: SimpleNamespace, storage_dir: Path):
+        self.log = getLogger("papertext.auth")
+
+        crypt_context.update(default=cfg.crypto.algo)
+        self.log.info("updated crypto context")
+
+        if str(cfg.token.regenerate_keys).lower() == "false":
+            cfg.token.regenerate_keys = False
+        else:
+            cfg.token.generate_keys = True
+        if str(cfg.token.generate_keys).lower() == "false":
+            cfg.token.generate_keys = False
+        else:
+            cfg.token.generate_keys = True
+
+        if cfg.token.regenerate_keys or cfg.token.generate_keys:
+            self.log.info("(re)generating keys")
+        elif not ((storage_dir / "private.key").exists() or (storage_dir / "public.key").exists()):
+            self.log.warning("unable to find keys")
+            raise FileExistsError("unable to find keys")
+
+        self.private_key = storage_dir / "private.key"
+        self.public_key = storage_dir / "public.key"
 
         self.engine = create_engine(
-            f"postgresql://{cfg.DB.username}:{cfg.DB.password}@{cfg.DB.host}:{cfg.DB.port}/{cfg.DB.dbname}",
-            # echo=True,
+            f"postgresql://{cfg.db.username}:{cfg.db.password}@{cfg.db.host}:{cfg.db.port}/{cfg.db.dbname}",
         )
         self.metadata = MetaData(bind=self.engine)
         self.users = Table(
@@ -48,6 +68,7 @@ class AuthImplemented(BaseAuth):
             Column("full_name", String(256)),
             Column("access_level", Integer),
             Column("organization", String(256)),
+            extend_existing=True,
         )
 
         self.tokens = Table(
@@ -57,6 +78,7 @@ class AuthImplemented(BaseAuth):
             Column("token", String),
             Column("location", String),
             Column("device", String),
+            extend_existing=True,
         )
 
         self.invitation_codes = Table(
@@ -65,6 +87,7 @@ class AuthImplemented(BaseAuth):
             Column("id", Integer, primary_key=True),
             Column("code", String),
             Column("issued_by", Integer),
+            extend_existing=True,
         )
         self.metadata.create_all(self.engine)
 
@@ -75,7 +98,7 @@ class AuthImplemented(BaseAuth):
         full_name: str = None,
         access_level: int = 0,
         organization: str = "Public",
-    ) -> Tuple[int, str]:
+    ) -> NoReturn:
         if full_name is None:
             full_name = username
         select = self.users.select().where(self.users.c.username == username)
@@ -89,31 +112,30 @@ class AuthImplemented(BaseAuth):
 
         conn = self.engine.connect()
         if len(conn.execute(select).fetchall()) > 0:
-            return status.HTTP_400_BAD_REQUEST, {"detail": f"User with username `{username}` already exists"}
+            pass
         else:
             conn.execute(insert)
-            return status.HTTP_200_OK, {"detail": "Successfully created new user"}
 
-    async def read_user(self, username: str) -> Tuple[int, str, UserInfo]:
+    async def read_user(self, username: str) -> UserInfo:
         select = self.users.select().where(self.users.c.username == username)
         conn = self.engine.connect()
         result = conn.execute(select).fetchone()
-        print(result)
-        user = UserInfo(username=result.username, full_name=result.full_name, organization=result.organization, access_level=result.access_level)
-        return status.HTTP_200_OK, {"detail": f"Successfully found user {result.id} by username"}, user
+        user = UserInfo(
+            username=result.username,
+            full_name=result.full_name,
+            organization=result.organization,
+            access_level=result.access_level,
+        )
+        return user
 
-
-    def update_user(
-        self,
-        email: str,
-        password: str = None,
-        name: str = None,
-        organization: int = None,
-        access_level: int = None,
-    ) -> bool:
+    def update_user(self, email: str, password: str = None, name: str = None, organization: int = None,
+                    access_level: int = None, **kwargs) -> bool:
         pass
 
     def delete_user(self, email: str) -> bool:
+        pass
+
+    async def read_users(self) -> List[UserInfo]:
         pass
 
     def sign_in(self, username: str, password: str, ) -> str:
@@ -143,5 +165,11 @@ class AuthImplemented(BaseAuth):
             allow_headers=["*"],
         )
 
-    def test_token(self, greater_or_equal: int, one_of: List[int]) -> bool:
+    async def get_user_from_token(self) -> UserInfo:
         pass
+
+    async def get_tokens(self, username: str) -> List[str]:
+        pass
+
+    def test_token(self, greater_or_equal: int, one_of: List[int]) -> bool:
+        return True
