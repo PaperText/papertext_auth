@@ -33,7 +33,7 @@ rope = "^0.16.0"
 exclude = ["__pycahce__"]
 format = "grouped"
 show_source = true
-max_line_length = 88
+max_line_length = 79
 
 [tool.flakehell.plugins]
 "flake8-*" = ["+*"]
@@ -45,15 +45,15 @@ max_line_length = 88
 
 [tool.black]
 target-version = ['py38']
-line_length=88
+line_length = 79
 
 [tool.isort]
-multi_line_output=3
-include_trailing_comma=true
-force_grid_wrap=0
-use_parentheses=true
-line_length=88
-balanced_wrapping=true
+multi_line_output = 3
+include_trailing_comma = true
+force_grid_wrap = 0
+use_parentheses = true
+line_length = 79
+balanced_wrapping = true
 
 [build-system]
 requires = ["poetry>=0.12"]
