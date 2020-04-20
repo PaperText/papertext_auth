@@ -5,9 +5,8 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from sqlalchemy import Table, Column, String, Integer, MetaData, create_engine
-from fastapi.middleware.cors import CORSMiddleware
 
-from paperback import NewUser, BaseAuth, UserInfo
+from paperback.abc import NewUser, BaseAuth, UserInfo
 
 from .crypto import crypt_context
 
@@ -21,11 +20,11 @@ class AuthImplemented(BaseAuth):
             "password": "password",
             "dbname": "papertext",
         },
-        "crypto": {"algo": "argon2"},
+        "hash": {"algo": "argon2"},
         "token": {
             "algo": "ecsda",
-            "generate_keys": "False",
-            "regenerate_keys": "False",
+            "generate_keys": False,
+            "regenerate_keys": False,
         },
     }
 
@@ -33,10 +32,13 @@ class AuthImplemented(BaseAuth):
 
     def __init__(self, cfg: SimpleNamespace, storage_dir: Path):
         self.log = getLogger("papertext.auth")
+        self.log.debug("initialized papertext.auth logger")
 
-        crypt_context.update(default=cfg.crypto.algo)
+        self.log.debug("updating crypto context")
+        crypt_context.update(default=cfg.hash.algo)
         self.log.info("updated crypto context")
 
+        self.log.debug("getting token keys")
         if str(cfg.token.regenerate_keys).lower() == "false":
             cfg.token.regenerate_keys = False
         else:
@@ -46,22 +48,42 @@ class AuthImplemented(BaseAuth):
         else:
             cfg.token.generate_keys = True
 
-        if cfg.token.regenerate_keys or cfg.token.generate_keys:
-            self.log.info("(re)generating keys")
-        elif not (
-            (storage_dir / "private.key").exists()
-            or (storage_dir / "public.key").exists()
-        ):
-            self.log.warning("unable to find keys")
-            raise FileExistsError("unable to find keys")
+        private_key = storage_dir / "private.pem"
+        public_key = storage_dir / "public.pem"
 
-        # self.private_key = storage_dir / "private.key"
-        # self.public_key = storage_dir / "public.key"
+        if cfg.token.regenerate_keys:
+            self.log.debug("regenerating both of the keys")
+            self.regenerate_keys(cfg.token.algo)
+        else:
+            if private_key and public_key:
+                if cfg.token.generate_keys:
+                    self.log.debug("both keys are present, nothing to generate")
+            else:
+                if cfg.token.generate_keys:
+                    if not private_key and not public_key:
+                        self.log.debug("both keys are missing, regenerating")
+                    else:
+                        self.log.debug("one of the keys is missing")
+                        if private_key.exists():
+                            self.log.debug("private key is present, regenerating public")
+                            self.private2public_key(cfg.token.algo)
 
+                        elif public_key.exists():
+                            self.log.debug("public key is present, can't regenerate private, regenerating both")
+                            public_key.unlink()
+                            self.regenerate_keys(cfg.token.algo)
+                else:
+                    self.log.warning("unable to find keys")
+                    raise FileExistsError("unable to find keys")
+        self.log.info("acquired token keys")
+
+        self.log.debug("connecting to db")
         self.engine = create_engine(
             f"postgresql://{cfg.db.username}:{cfg.db.password}@{cfg.db.host}:{cfg.db.port}/{cfg.db.dbname}",
         )
+        self.log.debug("acquiring db metadata")
         self.metadata = MetaData(bind=self.engine)
+        self.log.debug("creating tables/ensuring they are present")
         self.users = Table(
             "users",
             self.metadata,
@@ -93,15 +115,13 @@ class AuthImplemented(BaseAuth):
             extend_existing=True,
         )
         self.metadata.create_all(self.engine)
+        self.log.info("connected to db")
 
-    def add_CORS(self, api: FastAPI) -> NoReturn:
-        api.add_middleware(
-            CORSMiddleware,
-            allow_origins=["*"],
-            allow_credentials=True,
-            allow_methods=["*"],
-            allow_headers=["*"],
-        )
+    def regenerate_keys(self, algo: str) -> NoReturn:
+        pass
+
+    def private2public_key(self, algo: str) -> NoReturn:
+        pass
 
     async def create_user(
         self,
