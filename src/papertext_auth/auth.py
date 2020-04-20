@@ -22,7 +22,7 @@ class AuthImplemented(BaseAuth):
         },
         "hash": {"algo": "argon2"},
         "token": {
-            "algo": "ecsda",
+            "algo": "ecdsa",
             "generate_keys": False,
             "regenerate_keys": False,
         },
