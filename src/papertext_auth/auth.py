@@ -1,7 +1,7 @@
 from logging import getLogger
 from pathlib import Path
 from types import SimpleNamespace
-from typing import List, Mapping, NoReturn, Union
+from typing import List, Mapping, NoReturn, Union, Optional
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -31,6 +31,8 @@ class AuthImplemented(BaseAuth):
         "token": {"algo": "ecsda", "generate_keys": "False", "regenerate_keys": "False"},
     }
 
+    requires_dir = True
+
     def __init__(self, cfg: SimpleNamespace, storage_dir: Path):
         self.log = getLogger("papertext.auth")
 
@@ -52,8 +54,8 @@ class AuthImplemented(BaseAuth):
             self.log.warning("unable to find keys")
             raise FileExistsError("unable to find keys")
 
-        self.private_key = storage_dir / "private.key"
-        self.public_key = storage_dir / "public.key"
+        # self.private_key = storage_dir / "private.key"
+        # self.public_key = storage_dir / "public.key"
 
         self.engine = create_engine(
             f"postgresql://{cfg.db.username}:{cfg.db.password}@{cfg.db.host}:{cfg.db.port}/{cfg.db.dbname}",
@@ -90,6 +92,15 @@ class AuthImplemented(BaseAuth):
             extend_existing=True,
         )
         self.metadata.create_all(self.engine)
+
+    def add_CORS(self, api: FastAPI) -> NoReturn:
+        api.add_middleware(
+            CORSMiddleware,
+            allow_origins=["*"],
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
 
     async def create_user(
         self,
@@ -128,48 +139,35 @@ class AuthImplemented(BaseAuth):
         )
         return user
 
-    def update_user(self, email: str, password: str = None, name: str = None, organization: int = None,
-                    access_level: int = None, **kwargs) -> bool:
+    def token2user(self, token: str) -> UserInfo:
         pass
 
-    def delete_user(self, email: str) -> bool:
+    async def update_user(self, username: str, new_username: Optional[str] = None, password: Optional[str] = None,
+                          name: Optional[str] = None, access_level: Optional[int] = None,
+                          organization: Optional[str] = None) -> NoReturn:
         pass
 
-    async def read_users(self) -> List[UserInfo]:
+    async def delete_user(self, username: str) -> NoReturn:
         pass
 
-    def sign_in(self, username: str, password: str, ) -> str:
+    async def sign_in(self, username: str, password: str) -> str:
         pass
 
-    def sign_out(self, ) -> bool:
+    async def sign_out(self) -> NoReturn:
         pass
 
-    def sign_out_everywhere(self, ) -> bool:
+    async def sign_out_everywhere(self) -> NoReturn:
         pass
 
-    def sign_up(self, user: NewUser) -> str:
+    async def sign_up(self, user: NewUser) -> NoReturn:
         pass
 
-    def remove_token(self, token: str) -> bool:
+    async def remove_token(self, token: str) -> NoReturn:
         pass
 
-    def remove_tokens(self, token: List[str]) -> bool:
-        pass
-
-    def add_CORS(self, api: FastAPI) -> NoReturn:
-        api.add_middleware(
-            CORSMiddleware,
-            allow_origins=["*"],
-            allow_credentials=True,
-            allow_methods=["*"],
-            allow_headers=["*"],
-        )
-
-    async def get_user_from_token(self) -> UserInfo:
+    async def remove_tokens(self, token: List[str]) -> NoReturn:
         pass
 
     async def get_tokens(self, username: str) -> List[str]:
         pass
 
-    def test_token(self, greater_or_equal: int, one_of: List[int]) -> bool:
-        return True
