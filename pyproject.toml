@@ -5,8 +5,8 @@ description = ""
 authors = ["Danil Kireev <kireev@isa.ru>"]
 
 [tool.poetry.scripts]
-lint = "papertext_auth.__main__:flake_lint"
-fix = "papertext_auth.__main__:fix_all"
+lint = "papertext_auth.__main__:lint"
+fix = "papertext_auth.__main__:fix"
 
 [tool.poetry.plugins."paperback.modules"]
 auth = "papertext_auth:AuthImplemented"

@@ -11,7 +11,7 @@ pyproject_path = source_path / "pyproject.toml"
 pyproject_path = pyproject_path.resolve()
 
 
-def flake_lint():
+def lint():
     call(f"python -m flakehell lint {src_path}".split(" "))
 
 
@@ -23,6 +23,6 @@ def fix_isort():
     call(f"python -m isort -rc {src_path}".split(" "))
 
 
-def fix_all():
+def fix():
     fix_black()
     fix_isort()
