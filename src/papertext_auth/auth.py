@@ -1,19 +1,13 @@
+from types import SimpleNamespace
+from typing import List, Union, Mapping, NoReturn, Optional
 from logging import getLogger
 from pathlib import Path
-from types import SimpleNamespace
-from typing import List, Mapping, NoReturn, Union, Optional
 
 from fastapi import FastAPI
+from sqlalchemy import Table, Column, String, Integer, MetaData, create_engine
 from fastapi.middleware.cors import CORSMiddleware
-from paperback import BaseAuth, NewUser, UserInfo
-from sqlalchemy import (
-    Column,
-    Integer,
-    MetaData,
-    String,
-    Table,
-    create_engine,
-)
+
+from paperback import NewUser, BaseAuth, UserInfo
 
 from .crypto import crypt_context
 
@@ -28,7 +22,11 @@ class AuthImplemented(BaseAuth):
             "dbname": "papertext",
         },
         "crypto": {"algo": "argon2"},
-        "token": {"algo": "ecsda", "generate_keys": "False", "regenerate_keys": "False"},
+        "token": {
+            "algo": "ecsda",
+            "generate_keys": "False",
+            "regenerate_keys": "False",
+        },
     }
 
     requires_dir = True
@@ -50,7 +48,10 @@ class AuthImplemented(BaseAuth):
 
         if cfg.token.regenerate_keys or cfg.token.generate_keys:
             self.log.info("(re)generating keys")
-        elif not ((storage_dir / "private.key").exists() or (storage_dir / "public.key").exists()):
+        elif not (
+            (storage_dir / "private.key").exists()
+            or (storage_dir / "public.key").exists()
+        ):
             self.log.warning("unable to find keys")
             raise FileExistsError("unable to find keys")
 
@@ -142,9 +143,15 @@ class AuthImplemented(BaseAuth):
     def token2user(self, token: str) -> UserInfo:
         pass
 
-    async def update_user(self, username: str, new_username: Optional[str] = None, password: Optional[str] = None,
-                          name: Optional[str] = None, access_level: Optional[int] = None,
-                          organization: Optional[str] = None) -> NoReturn:
+    async def update_user(
+        self,
+        username: str,
+        new_username: Optional[str] = None,
+        password: Optional[str] = None,
+        name: Optional[str] = None,
+        access_level: Optional[int] = None,
+        organization: Optional[str] = None,
+    ) -> NoReturn:
         pass
 
     async def delete_user(self, username: str) -> NoReturn:
@@ -170,4 +177,3 @@ class AuthImplemented(BaseAuth):
 
     async def get_tokens(self, username: str) -> List[str]:
         pass
-
