@@ -29,6 +29,9 @@ isort = "^4.3"
 mypy = "^0.761"
 rope = "^0.16.0"
 
+[tool.poetry.extras]
+argon2 = ["argon2-cffi"]
+
 [tool.flakehell]
 exclude = ["__pycahce__"]
 format = "grouped"
