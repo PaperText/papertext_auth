@@ -10,14 +10,15 @@ Configuration
     * password: default "password"
     * dbname, default "papertext"
 * hash (settings for password hashing)
-    * algo, default "argon2"\
+    * algo, default "pbkdf2_sha256,"\
         possible values:
         * argon2: newest hashing algorithm (since 2013)\
             support library: `pip install argon2-cffi`, 
-            installed by default, required for use
+            best choice
         * pbkdf2_sha256: has fastest pure-python backend\
             support library: `pip install fastpbkdf2`, 
-            isn't required, but prefered for improved speed
+            installed by default, but prefered for improved speed
+            if pure python
         * bcrypt: most reliable, but not the fastest\
             support library: `pip install bcrypt`, required for use
 * token (settings for jwt)
