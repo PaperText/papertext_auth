@@ -12,13 +12,13 @@ Configuration
 * hash (settings for password hashing)
     * algo, default "pbkdf2_sha256,"\
         possible values:
-        * argon2: newest hashing algorithm (since 2013)\
-            support library: `pip install argon2-cffi`, 
-            best choice
         * pbkdf2_sha256: has fastest pure-python backend\
             support library: `pip install fastpbkdf2`, 
-            installed by default, but prefered for improved speed
-            if pure python
+            used by default, but preferred for improved speed
+            in pure python implementation
+        * argon2: newest(2013) hashing algorithm \
+            support library: `pip install argon2-cffi`, 
+            authors choice
         * bcrypt: most reliable, but not the fastest\
             support library: `pip install bcrypt`, required for use
 * token (settings for jwt)
