@@ -20,7 +20,7 @@ class AuthImplemented(BaseAuth):
             "password": "password",
             "dbname": "papertext",
         },
-        "hash": {"algo": "pbkdf2_sha512"},
+        "hash": {"algo": "pbkdf2_sha256"},
         "token": {
             "algo": "ecdsa",
             "generate_keys": False,
