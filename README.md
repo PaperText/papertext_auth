@@ -10,9 +10,9 @@ Configuration
     * password: default "password"
     * dbname, default "papertext"
 * hash (settings for password hashing)
-    * algo, default "pbkdf2_sha256,"\
+    * algo, default "pbkdf2_sha512,"\
         possible values:
-        * pbkdf2_sha256: has fastest pure-python backend\
+        * pbkdf2_sha512: has fastest pure-python backend\
             support library: `pip install fastpbkdf2`, 
             used by default, but preferred for improved speed
             in pure python implementation
