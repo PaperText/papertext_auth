@@ -6,7 +6,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from sqlalchemy import Table, Column, String, Integer, MetaData, create_engine
 
-from paperback.abc import NewUser, BaseAuth, UserInfo
+from paperback.abc import FullOrganisationInfo, NewUser, BaseAuth, OrganisationInfo, UserInfo
 
 from .crypto import crypt_context
 
@@ -151,6 +151,9 @@ class AuthImplemented(BaseAuth):
         else:
             conn.execute(insert)
 
+    async def get_users(self) -> List[UserInfo]:
+        pass
+
     async def read_user(self, username: str) -> UserInfo:
         select = self.users.select().where(self.users.c.username == username)
         conn = self.engine.connect()
@@ -199,4 +202,18 @@ class AuthImplemented(BaseAuth):
         pass
 
     async def get_tokens(self, username: str) -> List[str]:
+        pass
+    async def create_org(self, name: str, title: str):
+        pass
+
+    async def update_org(self, org_name: str, org_title: str):
+        pass
+
+    async def delete_org(self, org_name: str):
+        pass
+
+    async def get_orgs(self) -> List[OrganisationInfo]:
+        pass
+
+    async def get_org_with_users(self, org_name: str) -> FullOrganisationInfo:
         pass
