@@ -6,7 +6,14 @@ from pathlib import Path
 from fastapi import FastAPI
 from sqlalchemy import Table, Column, String, Integer, MetaData, create_engine
 
-from paperback.abc import Organisation, NewUser, BaseAuth, MinimalOrganisation, UserInfo, InviteCode
+from paperback.abc import (
+    NewUser,
+    BaseAuth,
+    UserInfo,
+    InviteCode,
+    Organisation,
+    MinimalOrganisation,
+)
 
 from .crypto import crypt_context
 
@@ -57,7 +64,9 @@ class AuthImplemented(BaseAuth):
         else:
             if private_key and public_key:
                 if cfg.token.generate_keys:
-                    self.log.debug("both keys are present, nothing to generate")
+                    self.log.debug(
+                        "both keys are present, nothing to generate"
+                    )
             else:
                 if cfg.token.generate_keys:
                     if not private_key and not public_key:
@@ -65,19 +74,27 @@ class AuthImplemented(BaseAuth):
                     else:
                         self.log.debug("one of the keys is missing")
                         if private_key.exists():
-                            self.log.debug("private key is present, regenerating public")
+                            self.log.debug(
+                                "private key is present, regenerating public"
+                            )
                             self.private2public_key(cfg.token.algo)
 
                         elif public_key.exists():
-                            self.log.debug("public key is present, can't regenerate private")
+                            self.log.debug(
+                                "public key is present, can't regenerate private"
+                            )
                             self.log.warning("unable to find keys")
-                            raise FileExistsError("unable to find private key, "
-                                                  "try `auth.token.regenerate_keys = true`in config")
+                            raise FileExistsError(
+                                "unable to find private key, "
+                                "try `auth.token.regenerate_keys = true`in config"
+                            )
 
                 else:
                     self.log.warning("unable to find keys")
-                    raise FileExistsError("unable to find keys"
-                                          "try `auth.token.regenerate_keys = true`in config")
+                    raise FileExistsError(
+                        "unable to find keys"
+                        "try `auth.token.regenerate_keys = true`in config"
+                    )
         self.log.info("acquired token keys")
 
         self.log.debug("connecting to db")
