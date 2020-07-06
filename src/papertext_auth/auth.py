@@ -6,7 +6,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from sqlalchemy import Table, Column, String, Integer, MetaData, create_engine
 
-from paperback.abc import FullOrganisationInfo, NewUser, BaseAuth, OrganisationInfo, UserInfo, InviteCode
+from paperback.abc import Organisation, NewUser, BaseAuth, MinimalOrganisation, UserInfo, InviteCode
 
 from .crypto import crypt_context
 
@@ -203,7 +203,7 @@ class AuthImplemented(BaseAuth):
 
     async def get_tokens(self, username: str) -> List[str]:
         pass
-    
+
     async def create_org(self, name: str, title: str):
         pass
 
@@ -213,10 +213,10 @@ class AuthImplemented(BaseAuth):
     async def delete_org(self, org_name: str):
         pass
 
-    async def get_orgs(self) -> List[OrganisationInfo]:
+    async def get_orgs(self) -> List[MinimalOrganisation]:
         pass
 
-    async def get_org_with_users(self, org_name: str) -> FullOrganisationInfo:
+    async def get_org_with_users(self, org_name: str) -> Organisation:
         pass
 
     async def create_invite_code(self, gives_access: List[str]) -> str:
