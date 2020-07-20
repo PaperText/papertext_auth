@@ -177,8 +177,8 @@ class AuthImplemented(BaseAuth):
         result = conn.execute(select).fetchone()
         user = UserInfo(
             username=result.username,
-            full_name=result.full_name,
-            organization=result.organization,
+            fullname=result.fullname,
+            organization=result.organisation,
             access_level=result.access_level,
         )
         return user
