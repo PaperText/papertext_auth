@@ -1,6 +1,6 @@
 from passlib.context import CryptContext
 
-crypt_context = CryptContext(
+crypto_context = CryptContext(
     schemes=["argon2", "pbkdf2_sha512", "bcrypt"],
     deprecated="auto",
     argon2__max_threads=-1,

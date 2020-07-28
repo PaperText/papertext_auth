@@ -5,8 +5,8 @@ description = ""
 authors = ["Danil Kireev <kireev@isa.ru>"]
 
 [tool.poetry.scripts]
-lint = "papertext_auth.__main__:lint"
-fix = "papertext_auth.__main__:fix"
+lint = "papertext_auth.__main__:Scripts.lint"
+fix = "papertext_auth.__main__:Scripts.fix"
 
 [tool.poetry.plugins."paperback.modules"]
 auth = "papertext_auth:AuthImplemented"
@@ -14,16 +14,17 @@ auth = "papertext_auth:AuthImplemented"
 [tool.poetry.dependencies]
 python = "^3.8"
 sqlalchemy = "^1.3.13"
-psycopg2-binary = "^2.8.4"
 passlib = "^1.7.2"
+databases = {version = "^0.3.2", extras = ["postgresql"]}
 argon2-cffi = {version="^19.2.0", optional=true}
+ecdsa = "^0.15"
+gmpy2 = {version="^2.0.8", optional=true}
 
 [tool.poetry.dev-dependencies]
 pytest = "^5.2"
 flake8 = "^3.7"
 flakehell = "^0.3.2"
 flake8-fixme = "^1.1"
-flake8-mypy = "^17.8"
 pep8-naming = "^0.9.1"
 black = "19.10b0"
 isort = "^4.3"
@@ -32,6 +33,7 @@ rope = "^0.16.0"
 
 [tool.poetry.extras]
 argon2 = ["argon2-cffi"]
+fast_ecdsa = ["gmpy2"]
 
 [tool.flakehell]
 exclude = ["__pycahce__"]
@@ -40,7 +42,7 @@ show_source = true
 max_line_length = 79
 
 [tool.flakehell.plugins]
-"flake8-*" = ["+*"]
+"flake8-fixme" = ["+*"]
 "pep8-naming" = ["+*"]
 "mccabe" = ["+*"]
 "pycodestyle" = ["+*"]

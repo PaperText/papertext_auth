@@ -1,10 +1,15 @@
+import asyncio
 from types import SimpleNamespace
 from typing import List, Union, Mapping, NoReturn, Optional
-from logging import getLogger
+import logging
 from pathlib import Path
+from collections import defaultdict
 
+from databases import Database
 from fastapi import FastAPI
+import ecdsa
 from sqlalchemy import Table, Column, String, Integer, MetaData, create_engine
+from pydantic import BaseModel
 
 from paperback.abc import (
     NewUser,
@@ -15,7 +20,7 @@ from paperback.abc import (
     MinimalOrganisation,
 )
 
-from .crypto import crypt_context
+from .crypto import crypto_context
 
 
 class AuthImplemented(BaseAuth):
@@ -29,81 +34,73 @@ class AuthImplemented(BaseAuth):
         },
         "hash": {"algo": "pbkdf2_sha512"},
         "token": {
-            "algo": "ecdsa",
+            "curve": "secp521r1",
             "generate_keys": False,
-            "regenerate_keys": False,
         },
     }
 
     requires_dir = True
 
     def __init__(self, cfg: SimpleNamespace, storage_dir: Path):
-        self.log = getLogger("papertext.auth")
-        self.log.debug("initialized papertext.auth logger")
+        self.logger = logging.getLogger(__name__)
+        self.logger.setLevel(logging.getLogger("paperback").level)
+        self.logger.info("initializing papertext_auth module")
 
-        self.log.debug("updating crypto context")
-        crypt_context.update(default=cfg.hash.algo)
-        self.log.info("updated crypto context")
+        self.storage_dir = storage_dir
+        self.cfg = cfg
+        # TODO: add check for configuration,
+        #  i.e. that hash.algo lib and token.curve lib are present
 
-        self.log.debug("getting token keys")
-        if str(cfg.token.regenerate_keys).lower() == "false":
-            cfg.token.regenerate_keys = False
+        self.logger.debug("updating crypto context")
+        crypto_context.update(default=cfg.hash.algo)
+
+        self.logger.debug("getting JWT keys")
+
+        self.private_key_file = self.storage_dir / "private.pem"
+        self.public_key_file = self.storage_dir / "public.pem"
+
+        if cfg.token.generate_keys:
+            self.logger.debug("option for generation keys is enabled")
+            if self.public_key_file.exists():
+                self.logger.warning("public key exist, saving it")
+                bak_public_key_file = self.storage_dir / "public.pem.bak"
+                self.public_key_file.rename(bak_public_key_file)
+                self.public_key_file.touch(exist_ok=True)
+            if self.private_key_file.exists():
+                self.logger.warning("private key exist, saving it")
+                bak_private_key_file = self.storage_dir / "private.pem.bak"
+                self.private_key_file.rename(bak_private_key_file)
+                self.private_key_file.touch(exist_ok=True)
+            if not (self.public_key_file.exists() and self.private_key_file.exists()):
+                self.logger.debug("no keys found")
+                self.public_key_file.touch(exist_ok=True)
+                self.private_key_file.touch(exist_ok=True)
+            self.logger.debug("generating new keys")
+            self.private_key, self.public_key = self.generate_keys(cfg.token.curve)
+            self.logger.debug("saving new keys")
+            self.private_key_file.write_bytes(self.private_key.to_pem())
+            self.public_key_file.write_bytes(self.public_key.to_pem())
         else:
-            cfg.token.generate_keys = True
-        if str(cfg.token.generate_keys).lower() == "false":
-            cfg.token.generate_keys = False
-        else:
-            cfg.token.generate_keys = True
-
-        private_key = storage_dir / "private.pem"
-        public_key = storage_dir / "public.pem"
-
-        if cfg.token.regenerate_keys:
-            self.log.debug("regenerating both of the keys")
-            self.regenerate_keys(cfg.token.algo)
-        else:
-            if private_key and public_key:
-                if cfg.token.generate_keys:
-                    self.log.debug(
-                        "both keys are present, nothing to generate"
-                    )
+            if self.public_key_file.exists() and self.private_key_file.exists():
+                self.logger.debug("both keys are present")
             else:
-                if cfg.token.generate_keys:
-                    if not private_key and not public_key:
-                        self.log.debug("both keys are missing, regenerating")
-                    else:
-                        self.log.debug("one of the keys is missing")
-                        if private_key.exists():
-                            self.log.debug(
-                                "private key is present, regenerating public"
-                            )
-                            self.private2public_key(cfg.token.algo)
+                self.logger.error("one of the keys if missing")
+                raise FileExistsError("one of the keys if missing")
+            self.private_key, self.public_key = self.read_keys(cfg.token.curve)
 
-                        elif public_key.exists():
-                            self.log.debug(
-                                "public key is present, can't regenerate private"
-                            )
-                            self.log.warning("unable to find keys")
-                            raise FileExistsError(
-                                "unable to find private key, "
-                                "try `auth.token.regenerate_keys = true`in config"
-                            )
+        self.logger.info("acquired token keys")
 
-                else:
-                    self.log.warning("unable to find keys")
-                    raise FileExistsError(
-                        "unable to find keys"
-                        "try `auth.token.regenerate_keys = true`in config"
-                    )
-        self.log.info("acquired token keys")
+        database_url: str = f"postgresql://{cfg.db.username}:{cfg.db.password}@{cfg.db.host}:{cfg.db.port}/{cfg.db.dbname}"
+        database: Database = Database(database_url)
+        asyncio.get_event_loop().run_until_complete(database.connect())
 
-        self.log.debug("connecting to db")
+        self.logger.debug("connecting to db")
         self.engine = create_engine(
-            f"postgresql://{cfg.db.username}:{cfg.db.password}@{cfg.db.host}:{cfg.db.port}/{cfg.db.dbname}",
+            database_url
         )
-        self.log.debug("acquiring db metadata")
+        self.logger.debug("acquiring db metadata")
         self.metadata = MetaData(bind=self.engine)
-        self.log.debug("creating tables/ensuring they are present")
+        self.logger.debug("creating tables/ensuring they are present")
         self.users = Table(
             "users",
             self.metadata,
@@ -135,13 +132,33 @@ class AuthImplemented(BaseAuth):
             extend_existing=True,
         )
         self.metadata.create_all(self.engine)
-        self.log.info("connected to db")
+        self.logger.info("connected to db")
 
-    def regenerate_keys(self, algo: str) -> NoReturn:
-        pass
+    def generate_keys(self, curve: str) -> NoReturn:
+        def default():
+            self.logger.error("can't find specified curve")
+            raise KeyError("can't find specified curve")
+        def secp521r1():
+            self.logger.debug("creating secp521r1 keys")
+            sk = ecdsa.SigningKey.generate(curve=ecdsa.NIST521p)
+            vk = sk.verifying_key
+            return sk, vk
+        case = defaultdict(default)
+        case["secp521r1"] = secp521r1
+        return case[curve]()
 
-    def private2public_key(self, algo: str) -> NoReturn:
-        pass
+    def read_keys(self, curve: str) -> NoReturn:
+        def default():
+            self.logger.error("can't find specified curve")
+            raise KeyError("can't find specified curve")
+        def secp521r1():
+            self.logger.debug("creating secp521r1 keys")
+            sk = ecdsa.SigningKey.from_pem(self.private_key_file.read_text())
+            vk = sk.verifying_key
+            return sk, vk
+        case = defaultdict(default)
+        case["secp521r1"] = secp521r1
+        return case[curve]()
 
     async def create_user(
         self,
@@ -156,7 +173,7 @@ class AuthImplemented(BaseAuth):
         select = self.users.select().where(self.users.c.username == username)
         insert = self.users.insert().values(
             username=username,
-            hashed_password=crypt_context.hash(password),
+            hashed_password=crypto_context.hash(password),
             full_name=full_name,
             access_level=access_level,
             organization=organization,
