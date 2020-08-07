@@ -21,7 +21,7 @@ ecdsa = "^0.15"
 gmpy2 = {version="^2.0.8", optional=true}
 
 [tool.poetry.dev-dependencies]
-pytest = "^5.2"
+pytest = "^6.0"
 flake8 = "^3.7"
 flakehell = "^0.3.2"
 flake8-fixme = "^1.1"
