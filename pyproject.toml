@@ -29,7 +29,7 @@ pep8-naming = "^0.11.1"
 black = "19.10b0"
 isort = "^5.3"
 mypy = "^0.761"
-rope = "^0.16.0"
+rope = "^0.17.0"
 
 [tool.poetry.extras]
 argon2 = ["argon2-cffi"]
