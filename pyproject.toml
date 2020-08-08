@@ -29,7 +29,7 @@ flake8-fixme = "^1.1"
 pep8-naming = "^0.11.1"
 black = "19.10b0"
 isort = "^5.3"
-mypy = "^0.761"
+mypy = "^0.782"
 rope = "^0.17.0"
 sqlalchemy-stubs = "^0.3"
 
