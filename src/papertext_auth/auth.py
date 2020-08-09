@@ -255,9 +255,11 @@ class AuthImplemented(BaseAuth):
         password: str,
         identifier: Union[str, EmailStr],
     ) -> str:
-        print(request)
-        print(dict(request))
-        print(request.client)
+        self.logger.debug("request: %s", request)
+        self.logger.debug("dict(request): %s", dict(request))
+        self.logger.debug("request.client: %s", request.client)
+
+        await self.run_async()
 
         email: Optional[EmailStr] = None
         user_id: Optional[str] = None
@@ -266,13 +268,24 @@ class AuthImplemented(BaseAuth):
         except EmailNotValidError:
             user_id = identifier
 
-        await self.run_async()
+        hashed_password: str
+        if email:
+            hashed_password = (await self.database.fetch_one(
+                self.users.select().where(
+                    self.users.c.email == email
+                )
+            ))["hashed_password"]
+        else:
+            hashed_password = (await self.database.fetch_one(
+                self.users.select().where(
+                    self.users.c.user_id == user_id
+                )
+            ))["hashed_password"]
 
-        hashed_password: str = (await self.database.fetch_one(
-            self.users.select().where(
-                self.users.c.email == email
-            )
-        ))["hashed_password"]
+
+
+
+
 
         if not crypto_context.verify(password, hashed_password):
             raise HTTPException(
