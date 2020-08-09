@@ -13,6 +13,7 @@ from fastapi import FastAPI, HTTPException, status, Request
 from databases import Database
 from pydantic import EmailStr
 from email_validator import EmailNotValidError, validate_email
+from ip2geotools.databases.noncommercial import Ipstack
 
 from paperback.abc import (
     NewUser,
@@ -31,6 +32,7 @@ from .crypto import crypto_context
 
 class AuthImplemented(BaseAuth):
     DEFAULTS: Mapping[str, Union[str, Mapping[str, Union[str, bool]]]] = {
+        "IPstack_api_key": "",
         "db": {
             "host": "127.0.0.1",
             "port": "5432",
@@ -255,11 +257,19 @@ class AuthImplemented(BaseAuth):
         password: str,
         identifier: Union[str, EmailStr],
     ) -> str:
-        self.logger.debug("request: %s", request)
-        self.logger.debug("dict(request): %s", dict(request))
-        self.logger.debug("request.client: %s", request.client)
+        location: str = "Unknown"
+        if "x-real-ip" in request.headers:
+            real_ip: str = request.headers["x-real-ip"]
+            self.logger.debug("requesters IP adress is %s", real_ip)
+            if self.cfg.IPstack_api_key != "":
+                try:
+                    IPstack_res = Ipstack.get(real_ip, api_key=self.cfg.IPstack_api_key)
+                    location = f""
+                    location = str(dict(IPstack_res))
+                    self.logger.debug("found location %s", location)
+                except Exception:
+                    location = "Unknown"
 
-        await self.run_async()
 
         email: Optional[EmailStr] = None
         user_id: Optional[str] = None
@@ -267,6 +277,8 @@ class AuthImplemented(BaseAuth):
             email = validate_email(identifier).email
         except EmailNotValidError:
             user_id = identifier
+
+        await self.run_async()
 
         hashed_password: str
         if email:
