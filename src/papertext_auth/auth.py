@@ -6,12 +6,13 @@ from typing import Any, Dict, List, Union, Mapping, NoReturn, Optional
 from pathlib import Path
 from collections import defaultdict
 
+from authlib.jose import jwt
 import ecdsa
 import sqlalchemy as sa
-import sqlalchemy_utils as sau
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, HTTPException, status, Request
 from databases import Database
 from pydantic import EmailStr
+from email_validator import EmailNotValidError, validate_email
 
 from paperback.abc import (
     NewUser,
@@ -29,7 +30,7 @@ from .crypto import crypto_context
 
 
 class AuthImplemented(BaseAuth):
-    DEFAULTS: Mapping[str, Union[str, Mapping[str, str]]] = {
+    DEFAULTS: Mapping[str, Union[str, Mapping[str, Union[str, bool]]]] = {
         "db": {
             "host": "127.0.0.1",
             "port": "5432",
@@ -38,7 +39,7 @@ class AuthImplemented(BaseAuth):
             "dbname": "papertext",
         },
         "hash": {"algo": "pbkdf2_sha512"},
-        "token": {"curve": "secp521r1", "generate_keys": False,},
+        "token": {"curve": "secp521r1", "generate_keys": False, },
     }
 
     requires_dir: bool = True
@@ -102,7 +103,9 @@ class AuthImplemented(BaseAuth):
         self.logger.info("acquired token keys")
 
         self.logger.debug("setting up database")
-        database_url: str = f"postgresql://{cfg.db.username}:{cfg.db.password}@{cfg.db.host}:{cfg.db.port}/{cfg.db.dbname}"
+        database_url: str = "postgresql://" \
+                            f"{cfg.db.username}:{cfg.db.password}" \
+                            f"@{cfg.db.host}:{cfg.db.port}/{cfg.db.dbname}"
         self.database = Database(database_url)
         self.engine = sa.create_engine(database_url)
 
@@ -121,7 +124,7 @@ class AuthImplemented(BaseAuth):
                 default=uuid.uuid4,
             ),
             sa.Column("user_id", sa.String(256), unique=True),
-            sa.Column("email", sau.EmailType(), unique=True),
+            sa.Column("email", sa.String(256), unique=True),
             sa.Column("hashed_password", sa.Text()),
             sa.Column("user_name", sa.String(256)),
             sa.Column("level_of_access", sa.Integer()),
@@ -179,6 +182,7 @@ class AuthImplemented(BaseAuth):
 
         self.logger.info("connected to database")
 
+        # TODO: move to dedicated function
         self.logger.debug("creating basic organisation")
         conn = self.engine.connect()
         # organisation_id="pub", name="Публичная организация"
@@ -229,7 +233,9 @@ class AuthImplemented(BaseAuth):
         def secp521r1():
             self.logger.debug("creating secp521r1 keys")
             sk = ecdsa.SigningKey.from_pem(self.private_key_file.read_text())
-            vk = sk.verifying_key
+            vk = sk.verifying_key.to_pem()
+            sk = sk.to_pem()
+
             return sk, vk
 
         case = defaultdict(default)
@@ -239,8 +245,57 @@ class AuthImplemented(BaseAuth):
     def token2user(self, token: str) -> UserInfo:
         pass
 
-    async def signin(self, credentials: Credentials) -> str:
-        pass
+    async def signin(
+        self,
+        request: Request,
+        password: str,
+        identifier: Union[str, EmailStr],
+    ) -> str:
+        print(request)
+        print(dict(request))
+        print(request.client)
+
+        email: Optional[EmailStr] = None
+        user_id: Optional[str] = None
+        try:
+            email = validate_email(identifier).email
+        except EmailNotValidError:
+            user_id = identifier
+
+        await self.run_async()
+
+        hashed_password: str = (await self.database.fetch_one(
+            self.users.select().where(
+                self.users.c.email == email
+            )
+        ))["hashed_password"]
+
+        if not crypto_context.verify(password, hashed_password):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Incorrect password"
+            )
+
+        if email:
+            user = dict(
+                await self.database.fetch_one(
+                    self.users.select().where(
+                        self.users.c.email == email
+                    )
+                )
+            )
+        elif user_id:
+            user = dict(
+                await self.database.fetch_one(
+                    self.users.select().where(
+                        self.users.c.user_id == user_id
+                    )
+                )
+            )
+        # print(user)
+        header: Dict[str, str] = {"alg": "ES384", "typ": "JWT"}
+        payload: Dict[str, str] = {"iss": "paperback", "sub": "123"}
+        return jwt.encode(header, payload, self.private_key)
 
     async def signup(self, user: NewInvitedUser) -> str:
         pass
@@ -279,14 +334,26 @@ class AuthImplemented(BaseAuth):
 
         if len(org) == 0:
             self.logger.error(
-                "can't find organisation with id $s", organisation_id
+                "can't find organisation with id %s", organisation_id
             )
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail=f"can't find organisation with id {organisation_id}",
             )
 
-        print(org[0].values())
+        user = await self.database.fetch_all(
+            self.users.select().where(
+                self.users.c.user_id == user_id
+            )
+        )
+        if len(user) > 0:
+            self.logger.error(
+                "user with id %s already exists", user_id
+            )
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"user with id {user_id} already exists",
+            )
 
         new_user = {
             "user_id": user_id,
@@ -307,25 +374,45 @@ class AuthImplemented(BaseAuth):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="An error occurred when working with Auth DB. "
-                "Check logs for more information.",
+                       "Check logs for more information.",
             )
         return dict(**new_user, organisation_id=org[0]["organisation_id"])
 
+    async def read_user(self, user_id: str) -> UserInfo:
+        await self.run_async()
 
-    async def read_users(self) -> List[UserInfo]:
-        pass
-
-    async def read_user(self, username: str) -> UserInfo:
-        select = self.users.select().where(self.users.c.user_id == username)
-        conn = self.engine.connect()
-        result = conn.execute(select).fetchone()
-        user = UserInfo(
-            user_id=result.user_id,
-            user_name=result.organisation_name,
-            organisation_id=result.organisation_id,
-            level_of_access=result.level_of_access,
+        self.logger.debug("querying all user")
+        select = sa.sql.select([self.users, self.organisations]).where(
+            self.users.c.user_id == user_id
         )
+
+        try:
+            user = await self.database.fetch_one(select)
+        except Exception as exception:
+            self.logger.error(exception)
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="An error occurred when working with Auth DB. "
+                       "Check logs for more information.",
+            )
         return user
+
+    async def read_users(self) -> List[Dict[str, Union[str, int]]]:
+        await self.run_async()
+
+        self.logger.debug("querying all user")
+        select = sa.sql.select([self.users, self.organisations])
+
+        try:
+            users = await self.database.execute(select)
+        except Exception as exception:
+            self.logger.error(exception)
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="An error occurred when working with Auth DB. "
+                       "Check logs for more information.",
+            )
+        return users
 
     async def update_user(
         self,
