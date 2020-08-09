@@ -89,8 +89,8 @@ class AuthImplemented(BaseAuth):
                 cfg.token.curve
             )
             self.logger.debug("saving new keys")
-            self.private_key_file.write_bytes(self.private_key.to_pem())
-            self.public_key_file.write_bytes(self.public_key.to_pem())
+            self.private_key_file.write_bytes(self.private_key)
+            self.public_key_file.write_bytes(self.public_key)
         else:
             if (
                 self.public_key_file.exists()
