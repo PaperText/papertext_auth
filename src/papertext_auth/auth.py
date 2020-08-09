@@ -13,7 +13,8 @@ from fastapi import FastAPI, HTTPException, status, Request
 from databases import Database
 from pydantic import EmailStr
 from email_validator import EmailNotValidError, validate_email
-from ip2geotools.databases.noncommercial import Ipstack
+from ip2geotools.databases.noncommercial import Ipstack as IPstack
+from user_agents import parse
 
 from paperback.abc import (
     NewUser,
@@ -26,6 +27,8 @@ from paperback.abc import (
     UserUpdatePassword,
     MinimalOrganisation,
 )
+from paperback.abc.models import custom_charset, starts_with
+
 
 from .crypto import crypto_context
 
@@ -257,19 +260,29 @@ class AuthImplemented(BaseAuth):
         password: str,
         identifier: Union[str, EmailStr],
     ) -> str:
+
         location: str = "Unknown"
         if "x-real-ip" in request.headers:
             real_ip: str = request.headers["x-real-ip"]
             self.logger.debug("requesters IP adress is %s", real_ip)
             if self.cfg.IPstack_api_key != "":
                 try:
-                    IPstack_res = Ipstack.get(real_ip, api_key=self.cfg.IPstack_api_key)
+                    IPstack_res = IPstack.get(real_ip, api_key=self.cfg.IPstack_api_key)
                     location = f""
                     location = str(dict(IPstack_res))
-                    self.logger.debug("found location %s", location)
                 except Exception:
                     location = "Unknown"
+        self.logger.debug("requesters geolocation is %s", location)
 
+        device: str = "Unknown"
+        if "user-agent" in request.headers:
+            ua_str: str = request.headers["user-agent"]
+            try:
+                ua = parse(ua_str)
+                device = str(ua)
+            except Exception:
+                device = "Unknown"
+        self.logger.debug("requesters device is %s", device)
 
         email: Optional[EmailStr] = None
         user_id: Optional[str] = None
@@ -277,27 +290,34 @@ class AuthImplemented(BaseAuth):
             email = validate_email(identifier).email
         except EmailNotValidError:
             user_id = identifier
+            try:
+                user_id = custom_charset(None, user_id)
+                user_id = starts_with("usr:")(None, user_id)
+            except Exception as exception:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="incorrect identifier",
+                )
 
         await self.run_async()
-
-        hashed_password: str
         if email:
-            hashed_password = (await self.database.fetch_one(
-                self.users.select().where(
+            user = await self.database.fetch_one(
+                sa.sql.select(
+                    [self.users.c.user_id, self.users.c.hashed_password]
+                ).where(
                     self.users.c.email == email
                 )
-            ))["hashed_password"]
+            )
+            user_id = user["user_id"]
         else:
-            hashed_password = (await self.database.fetch_one(
-                self.users.select().where(
+            user = await self.database.fetch_one(
+                sa.sql.select(
+                    [self.users.c.hashed_password]
+                ).where(
                     self.users.c.user_id == user_id
                 )
-            ))["hashed_password"]
-
-
-
-
-
+            )
+        hashed_password = user["hashed_password"]
 
         if not crypto_context.verify(password, hashed_password):
             raise HTTPException(
@@ -305,23 +325,6 @@ class AuthImplemented(BaseAuth):
                 detail="Incorrect password"
             )
 
-        if email:
-            user = dict(
-                await self.database.fetch_one(
-                    self.users.select().where(
-                        self.users.c.email == email
-                    )
-                )
-            )
-        elif user_id:
-            user = dict(
-                await self.database.fetch_one(
-                    self.users.select().where(
-                        self.users.c.user_id == user_id
-                    )
-                )
-            )
-        # print(user)
         header: Dict[str, str] = {"alg": "ES384", "typ": "JWT"}
         payload: Dict[str, str] = {"iss": "paperback", "sub": "123"}
         return jwt.encode(header, payload, self.private_key)
