@@ -408,7 +408,7 @@ class AuthImplemented(BaseAuth):
         select = sa.sql.select([self.users, self.organisations])
 
         try:
-            users = await self.database.execute(select)
+            users = await self.database.fetch_all(select)
         except Exception as exception:
             self.logger.error(exception)
             raise HTTPException(
