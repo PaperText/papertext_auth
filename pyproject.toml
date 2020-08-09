@@ -22,6 +22,8 @@ gmpy2 = {version="^2.0.8", optional=true}
 authlib = "^0.14.3"
 ip2geotools = "^0.1.5"
 user-agents = "^2.1"
+pyyaml = "^5.3.1"
+ua-parser = "^0.10.0"
 
 [tool.poetry.dev-dependencies]
 pytest = "^6.0"
