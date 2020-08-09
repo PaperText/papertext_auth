@@ -36,6 +36,7 @@ sqlalchemy-stubs = "^0.3"
 [tool.poetry.extras]
 argon2 = ["argon2-cffi"]
 fast_ecdsa = ["gmpy2"]
+best=["argon2-cffi", "gmpy2"]
 
 [tool.flakehell]
 exclude = ["__pycahce__"]
