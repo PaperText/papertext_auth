@@ -14,10 +14,16 @@ pyproject_path = pyproject_path.resolve()
 class Scripts:
     @staticmethod
     def lint_flakehell():
+        print("+--------------------+")
+        print("| [flake]hell linter |")
+        print("+--------------------+")
         call(f"python -m flakehell lint {src_path}".split(" "))
 
     @staticmethod
     def lint_mypy():
+        print("+-------------+")
+        print("| mypy linter |")
+        print("+-------------+")
         call(f"python -m mypy {src_path}".split(" "))
 
     @staticmethod
