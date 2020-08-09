@@ -2,7 +2,7 @@ import uuid
 import asyncio
 import logging
 from types import SimpleNamespace
-from typing import Any, Dict, List, Union, Mapping, NoReturn, Optional
+from typing import Any, Callable, Dict, List, Tuple, Union, Mapping, NoReturn, Optional
 from pathlib import Path
 from collections import defaultdict
 
@@ -62,6 +62,8 @@ class AuthImplemented(BaseAuth):
 
         self.private_key_file = self.storage_dir / "private.pem"
         self.public_key_file = self.storage_dir / "public.pem"
+        self.private_key: bytes
+        self.public_key: bytes
 
         if cfg.token.generate_keys:
             self.logger.debug("option for generation keys is enabled")
@@ -219,9 +221,11 @@ class AuthImplemented(BaseAuth):
             self.logger.debug("creating secp521r1 keys")
             sk = ecdsa.SigningKey.generate(curve=ecdsa.NIST521p)
             vk = sk.verifying_key
+            sk = sk.to_pem()
+            vk = vk.to_pem()
             return sk, vk
 
-        case = defaultdict(default)
+        case: Dict[str, Callable[..., Tuple[bytes, bytes]]] = defaultdict(default)
         case["secp521r1"] = secp521r1
         return case[curve]()
 
@@ -233,9 +237,9 @@ class AuthImplemented(BaseAuth):
         def secp521r1():
             self.logger.debug("creating secp521r1 keys")
             sk = ecdsa.SigningKey.from_pem(self.private_key_file.read_text())
-            vk = sk.verifying_key.to_pem()
+            vk = sk.verifying_key
             sk = sk.to_pem()
-
+            vk = vk.to_pem()
             return sk, vk
 
         case = defaultdict(default)
