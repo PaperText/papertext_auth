@@ -1,3 +1,5 @@
+import datetime
+import time
 import uuid
 import asyncio
 import logging
@@ -140,7 +142,7 @@ class AuthImplemented(BaseAuth):
             sa.Column("user_name", sa.String(256)),
             sa.Column("level_of_access", sa.Integer()),
             sa.Column(
-                "organisation_uuid",
+                "users_organisation_uuid",
                 sa.Binary(16),
                 sa.ForeignKey("organisations.organisation_uuid"),
             ),
@@ -172,6 +174,8 @@ class AuthImplemented(BaseAuth):
             ),
             sa.Column("location", sa.Text()),
             sa.Column("device", sa.Text()),
+            sa.Column("issued_by", sa.Binary(16), sa.ForeignKey("users.user_uuid"),),
+            sa.Column("issued_at", sa.Text()),
             extend_existing=True,
         )
         self.invitation_codes = sa.Table(
@@ -255,8 +259,22 @@ class AuthImplemented(BaseAuth):
         case["secp521r1"] = secp521r1
         return case[curve]()
 
-    def token2user(self, token: str) -> UserInfo:
-        pass
+    def token2user(self, token: str) -> Dict[str, Union[str, int]]:
+        claims = jwt.decode(token, self.public_key)
+        user_uuid: bytes = uuid.UUID(claims["sub"]).bytes
+
+        conn = self.engine.connect()
+        user = conn.execute(
+            sa.sql.select([self.users, self.organisations]).where(
+                self.users.c.user_uuid == user_uuid
+            )
+        ).fetchone()
+        print(user)
+        print(dict(user))
+        conn.close()
+
+        self.logger.debug("decoded token %s for user %s", claims, user)
+        return user
 
     async def signin(
         self,
@@ -264,7 +282,6 @@ class AuthImplemented(BaseAuth):
         password: str,
         identifier: Union[str, EmailStr],
     ) -> str:
-
         location: str = "Unknown"
         if "x-real-ip" in request.headers:
             real_ip: str = request.headers["x-real-ip"]
@@ -308,23 +325,32 @@ class AuthImplemented(BaseAuth):
                 )
 
         await self.run_async()
-        if email:
-            user = await self.database.fetch_one(
-                sa.sql.select(
-                    [self.users.c.user_id, self.users.c.hashed_password]
-                ).where(
-                    self.users.c.email == email
+        try:
+            if email:
+                user = await self.database.fetch_one(
+                    sa.sql.select(
+                        [self.users.c.user_uuid, self.users.c.hashed_password]
+                    ).where(
+                        self.users.c.email == email
+                    )
                 )
-            )
-            user_id = user["user_id"]
-        else:
-            user = await self.database.fetch_one(
-                sa.sql.select(
-                    [self.users.c.hashed_password]
-                ).where(
-                    self.users.c.user_id == user_id
+            else:
+                user = await self.database.fetch_one(
+                    sa.sql.select(
+                        [self.users.c.user_uuid, self.users.c.hashed_password]
+                    ).where(
+                        self.users.c.user_id == user_id
+                    )
                 )
+        except Exception as exception:
+            self.logger.error(exception)
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="An error occurred when working with Auth DB. "
+                       "Check logs for more information.",
             )
+
+        user_uuid = user["user_uuid"]
         hashed_password = user["hashed_password"]
 
         if not crypto_context.verify(password, hashed_password):
@@ -333,8 +359,36 @@ class AuthImplemented(BaseAuth):
                 detail="Incorrect password"
             )
 
+        now: datetime.datetime = datetime.datetime.now()
+        token_uuid: bytes = uuid.uuid4().bytes
+
+        insert = self.tokens.insert().values(
+            token_uuid=token_uuid,
+            location=location,
+            device=device,
+            issued_by=user_uuid,
+            issued_at=str(now),
+        )
+
+        try:
+            await self.database.execute(insert)
+        except Exception as exception:
+            self.logger.error(exception)
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="An error occurred when working with Auth DB. "
+                       "Check logs for more information.",
+            )
+
         header: Dict[str, str] = {"alg": "ES384", "typ": "JWT"}
-        payload: Dict[str, str] = {"iss": "paperback", "sub": "123"}
+        payload: Dict[str, Any] = {
+            "iss": "paperback",
+            "sub": str(uuid.UUID(bytes=user_uuid)),
+            "exp": str(now + datetime.timedelta(days=2)),
+            "iat": str(now),
+            "jti": str(uuid.UUID(bytes=token_uuid)),
+        }
+        self.logger.debug("created token %s for user %s", payload, user_id)
         return jwt.encode(header, payload, self.private_key)
 
     async def signup(self, user: NewInvitedUser) -> str:
@@ -402,7 +456,7 @@ class AuthImplemented(BaseAuth):
             "level_of_access": level_of_access,
             "hashed_password": crypto_context.hash(password),
             "user_uuid": uuid.uuid4().bytes,
-            "organisation_uuid": org[0]["organisation_uuid"],
+            "users_organisation_uuid": org[0]["organisation_uuid"],
         }
         self.logger.debug("creating user with this info: %s", new_user)
         insert = self.users.insert().values(**new_user)
