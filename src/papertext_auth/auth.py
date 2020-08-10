@@ -271,7 +271,7 @@ class AuthImplemented(BaseAuth):
             self.logger.debug("requesters IP adress is %s", real_ip)
             try:
                 ipstack_res: Dict = self.ip2geo.get_location(real_ip)
-                location = f"{ipstack_res['country_flag_emoji']} " \
+                location = f"{ipstack_res['location']['country_flag_emoji']} " \
                            f"{ipstack_res['city']} / " \
                            f"{ipstack_res['region_name']} / " \
                            f"{ipstack_res['country_name']}"
