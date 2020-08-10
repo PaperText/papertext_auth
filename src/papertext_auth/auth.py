@@ -13,8 +13,8 @@ from fastapi import FastAPI, HTTPException, status, Request
 from databases import Database
 from pydantic import EmailStr
 from email_validator import EmailNotValidError, validate_email
-from ip2geotools.databases.noncommercial import Ipstack as IPstack
 from user_agents import parse
+from ipstack import GeoLookup
 
 from paperback.abc import (
     NewUser,
@@ -62,6 +62,10 @@ class AuthImplemented(BaseAuth):
         self.logger.debug("updating crypto context")
         crypto_context.update(default=cfg.hash.algo)
         self.logger.info("updated crypto context")
+
+        self.logger.debug("connecting to ipstack")
+        self.ip2geo = GeoLookup(cfg.IPstack_api_key)
+        self.logger.info("connected to ipstack")
 
         self.logger.debug("getting JWT keys")
 
@@ -267,7 +271,8 @@ class AuthImplemented(BaseAuth):
             self.logger.debug("requesters IP adress is %s", real_ip)
             if self.cfg.IPstack_api_key != "":
                 try:
-                    IPstack_res = IPstack.get(real_ip, api_key=self.cfg.IPstack_api_key)
+                    IPstack_res = self.ip2geo.use_https().get_location(real_ip)
+                    self.logger.debug("location: %s", IPstack_res)
                     location = f""
                     location = str(dict(IPstack_res))
                 except Exception:
