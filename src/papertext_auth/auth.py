@@ -269,14 +269,16 @@ class AuthImplemented(BaseAuth):
         if "x-real-ip" in request.headers:
             real_ip: str = request.headers["x-real-ip"]
             self.logger.debug("requesters IP adress is %s", real_ip)
-            if self.cfg.IPstack_api_key != "":
-                try:
-                    IPstack_res = self.ip2geo.use_https().get_location(real_ip)
-                    self.logger.debug("location: %s", IPstack_res)
-                    location = f""
-                    location = str(dict(IPstack_res))
-                except Exception:
-                    location = "Unknown"
+            try:
+                IPstack_res = self.ip2geo.use_https().get_location(real_ip)
+                self.logger.debug("location: %s", IPstack_res)
+                location = f""
+                location = str(dict(IPstack_res))
+            except Exception as exception:
+                self.logger.error(
+                    "an error acquired when requesting ipstack: %s", exception
+                )
+                location = "Unknown"
         self.logger.debug("requesters geolocation is %s", location)
 
         device: str = "Unknown"
