@@ -270,7 +270,7 @@ class AuthImplemented(BaseAuth):
             real_ip: str = request.headers["x-real-ip"]
             self.logger.debug("requesters IP adress is %s", real_ip)
             try:
-                IPstack_res = self.ip2geo.use_https().get_location(real_ip)
+                IPstack_res = self.ip2geo.get_location(real_ip)
                 self.logger.debug("location: %s", IPstack_res)
                 location = f""
                 location = str(dict(IPstack_res))
