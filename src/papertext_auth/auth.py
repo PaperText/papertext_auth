@@ -270,10 +270,11 @@ class AuthImplemented(BaseAuth):
             real_ip: str = request.headers["x-real-ip"]
             self.logger.debug("requesters IP adress is %s", real_ip)
             try:
-                IPstack_res = self.ip2geo.get_location(real_ip)
-                self.logger.debug("location: %s", IPstack_res)
-                location = f""
-                location = str(dict(IPstack_res))
+                ipstack_res: Dict = self.ip2geo.get_location(real_ip)
+                location = f"{ipstack_res['country_flag_emoji']} " \
+                           f"{ipstack_res['city']} / " \
+                           f"{ipstack_res['region_name']} / " \
+                           f"{ipstack_res['country_name']}"
             except Exception as exception:
                 self.logger.error(
                     "an error acquired when requesting ipstack: %s", exception
