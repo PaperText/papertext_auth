@@ -4,7 +4,17 @@ import uuid
 import asyncio
 import logging
 from types import SimpleNamespace
-from typing import Any, Callable, Dict, List, Tuple, Union, Mapping, NoReturn, Optional
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    List,
+    Tuple,
+    Union,
+    Mapping,
+    NoReturn,
+    Optional,
+)
 from pathlib import Path
 from collections import defaultdict
 
@@ -29,7 +39,7 @@ from paperback.abc import (
     UserUpdatePassword,
     MinimalOrganisation,
 )
-from paperback.abc.models import custom_charset, starts_with
+from paperback.abc.models import custom_charset
 
 
 from .crypto import crypto_context
@@ -46,7 +56,7 @@ class AuthImplemented(BaseAuth):
             "dbname": "papertext",
         },
         "hash": {"algo": "pbkdf2_sha512"},
-        "token": {"curve": "secp521r1", "generate_keys": False, },
+        "token": {"curve": "secp521r1", "generate_keys": False,},
     }
 
     requires_dir: bool = True
@@ -66,13 +76,13 @@ class AuthImplemented(BaseAuth):
         self.logger.info("updated crypto context")
 
         self.logger.debug("connecting to ipstack")
-        self.ip2geo = GeoLookup(cfg.IPstack_api_key)
+        self.ip2geo: GeoLookup = GeoLookup(cfg.IPstack_api_key)
         self.logger.info("connected to ipstack")
 
         self.logger.debug("getting JWT keys")
 
-        self.private_key_file = self.storage_dir / "private.pem"
-        self.public_key_file = self.storage_dir / "public.pem"
+        self.private_key_file: Path = self.storage_dir / "private.pem"
+        self.public_key_file: Path = self.storage_dir / "public.pem"
         self.private_key: bytes
         self.public_key: bytes
 
@@ -113,52 +123,43 @@ class AuthImplemented(BaseAuth):
                 raise FileExistsError("one of the keys if missing")
             self.private_key, self.public_key = self.read_keys(cfg.token.curve)
 
-        self.logger.info("acquired token keys")
+        self.logger.info("acquired JWT keys")
 
         self.logger.debug("setting up database")
-        database_url: str = "postgresql://" \
-                            f"{cfg.db.username}:{cfg.db.password}" \
-                            f"@{cfg.db.host}:{cfg.db.port}/{cfg.db.dbname}"
-        self.database = Database(database_url)
-        self.engine = sa.create_engine(database_url)
+        database_url: str = "postgresql://" f"{cfg.db.username}:{cfg.db.password}" f"@{cfg.db.host}:{cfg.db.port}/{cfg.db.dbname}"
+        self.database: Database = Database(database_url)
+        self.engine: sa.engine.Engine = sa.create_engine(database_url)
 
         self.logger.debug("setting up tables")
-        self.metadata = sa.MetaData(bind=self.engine)
+        self.metadata: sa.MetaData = sa.MetaData(bind=self.engine)
 
         self.logger.debug("creating tables or ensuring they are present")
-        self.users = sa.Table(
+        self.users: sa.Table = sa.Table(
             "users",
             self.metadata,
             sa.Column(
-                "user_uuid",
-                sa.Binary(16),
-                primary_key=True,
-                unique=True,
-                default=uuid.uuid4,
+                "user_id", sa.String(256), unique=True, primary_key=True
             ),
-            sa.Column("user_id", sa.String(256), unique=True),
-            sa.Column("email", sa.String(256), unique=True),
+            sa.Column("email", sa.String(256), unique=True, nullable=True),
             sa.Column("hashed_password", sa.Text()),
             sa.Column("user_name", sa.String(256)),
             sa.Column("level_of_access", sa.Integer()),
             sa.Column(
-                "users_organisation_uuid",
-                sa.Binary(16),
-                sa.ForeignKey("organisations.organisation_uuid"),
+                "member_of",
+                sa.String(256),
+                sa.ForeignKey("organisations.organisation_id"),
             ),
             extend_existing=True,
         )
-        self.organisations = sa.Table(
+        self.organisations: sa.Table = sa.Table(
             "organisations",
             self.metadata,
             sa.Column(
-                "organisation_uuid",
-                sa.Binary(16),
-                primary_key=True,
+                "organisation_id",
+                sa.String(256),
                 unique=True,
-                default=uuid.uuid4,
+                primary_key=True,
             ),
-            sa.Column("organisation_id", sa.String(256), unique=True),
             sa.Column("organisation_name", sa.Text()),
             extend_existing=True,
         )
@@ -166,15 +167,13 @@ class AuthImplemented(BaseAuth):
             "tokens",
             self.metadata,
             sa.Column(
-                "token_uuid",
-                sa.Binary(16),
-                primary_key=True,
-                unique=True,
-                default=uuid.uuid4,
+                "token_uuid", sa.Binary(16), primary_key=True, unique=True
             ),
             sa.Column("location", sa.Text()),
             sa.Column("device", sa.Text()),
-            sa.Column("issued_by", sa.Binary(16), sa.ForeignKey("users.user_uuid"),),
+            sa.Column(
+                "issued_by", sa.String(256), sa.ForeignKey("users.user_id"),
+            ),
             sa.Column("issued_at", sa.Text()),
             extend_existing=True,
         )
@@ -186,81 +185,108 @@ class AuthImplemented(BaseAuth):
                 sa.Binary(16),
                 primary_key=True,
                 unique=True,
-                default=uuid.uuid4,
             ),
             sa.Column("code", sa.Text()),
-            sa.Column("user_uuid", sa.Binary(16)),
-            sa.Column("organisation_uuid", sa.Binary(16)),
+            sa.Column(
+                "issuer_id", sa.String(256), sa.ForeignKey("users.user_id"),
+            ),
+            sa.Column(
+                "add_to",
+                sa.String(256),
+                sa.ForeignKey("organisations.organisation_id"),
+            ),
             extend_existing=True,
         )
         self.metadata.create_all(self.engine)
 
         self.logger.info("connected to database")
 
-        # TODO: move to dedicated function
+        self.public_org: Dict[str, str] = self.create_public_org()
+
+    def create_public_org(self) -> Dict[str, str]:
         self.logger.debug("creating basic organisation")
         conn = self.engine.connect()
-        # organisation_id="pub", name="Публичная организация"
         select_org_with_same_id = self.organisations.select().where(
             self.organisations.c.organisation_id == self.public_org_id
         )
-        org_with_same_id = conn.execute(select_org_with_same_id).fetchall()
-        if len(org_with_same_id) > 0:
-            self.logger.debug("public organisation already exists")
-            self.public_org = org_with_same_id
+        org_with_same_id = conn.execute(select_org_with_same_id).fetchone()
+        if org_with_same_id is not None:
+            self.logger.debug("public organisation %s already exists", dict(org_with_same_id))
+            conn.close()
+            return dict(org_with_same_id)
         else:
             self.logger.debug("public organisation doesn't exist")
             org = {
-                "organisation_uuid": uuid.uuid4().bytes,
-                "organisation_id": self.public_org_id,
+                "member_of": self.public_org_id,
                 "organisation_name": "Публичная организация",
             }
             insert = self.organisations.insert().values(**org)
             conn.execute(insert)
-            self.public_org = org
-        conn.close()
+            self.logger.debug("created public organisation %s", org)
+            conn.close()
+            return org
 
     async def run_async(self):
         if not self.database.is_connected:
-            self.logger.info("connected to database")
+            self.logger.info("connected to Auth DB")
             await self.database.connect()
 
-    def generate_keys(self, curve: str) -> NoReturn:
+    def generate_keys(self, curve: str) -> Tuple[bytes, bytes]:
         def default():
             self.logger.error("can't find specified curve")
             raise KeyError("can't find specified curve")
 
         def secp521r1():
             self.logger.debug("creating secp521r1 keys")
-            sk = ecdsa.SigningKey.generate(curve=ecdsa.NIST521p)
-            vk = sk.verifying_key
-            sk = sk.to_pem()
-            vk = vk.to_pem()
-            return sk, vk
+            sk: ecdsa.SigningKey = ecdsa.SigningKey.generate(
+                curve=ecdsa.NIST521p
+            )
+            vk: ecdsa.VerifyingKey = sk.verifying_key
+            sk_bytes: bytes = bytes(sk.to_pem())
+            vk_bytes: bytes = bytes(vk.to_pem())
+            return sk_bytes, vk_bytes
 
-        case: Dict[str, Callable[..., Tuple[bytes, bytes]]] = defaultdict(default)
+        case: Dict[str, Callable[..., Tuple[bytes, bytes]]] = defaultdict(
+            default
+        )
         case["secp521r1"] = secp521r1
         return case[curve]()
 
-    def read_keys(self, curve: str) -> NoReturn:
+    def read_keys(self, curve: str) -> Tuple[bytes, bytes]:
         def default():
             self.logger.error("can't find specified curve")
             raise KeyError("can't find specified curve")
 
         def secp521r1():
             self.logger.debug("creating secp521r1 keys")
-            sk = ecdsa.SigningKey.from_pem(self.private_key_file.read_text())
-            vk = sk.verifying_key
-            sk = sk.to_pem()
-            vk = vk.to_pem()
-            return sk, vk
+            sk: ecdsa.SigningKey = ecdsa.SigningKey.from_pem(
+                self.private_key_file.read_text()
+            )
+            vk: ecdsa.VerifyingKey = sk.verifying_key
+            sk_bytes: bytes = bytes(sk.to_pem())
+            vk_bytes: bytes = bytes(vk.to_pem())
+            return sk_bytes, vk_bytes
 
-        case = defaultdict(default)
+        case: Dict[str, Callable[..., Tuple[bytes, bytes]]] = defaultdict(
+            default
+        )
         case["secp521r1"] = secp521r1
         return case[curve]()
 
     def token2user(self, token: str) -> Dict[str, Union[str, int]]:
-        claims = jwt.decode(token, self.public_key)
+        try:
+            claims = jwt.decode(token, self.public_key)
+        except Exception as exception:
+            self.logger.error("can't verify token")
+            self.logger.error(exception)
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={
+                    "end": "can't verify token",
+                    "rus": "не смог верефецировать токен",
+                },
+            )
+
         user_uuid: bytes = uuid.UUID(claims["sub"]).bytes
 
         conn = self.engine.connect()
@@ -269,12 +295,20 @@ class AuthImplemented(BaseAuth):
                 self.users.c.user_uuid == user_uuid
             )
         ).fetchone()
-        print(user)
-        print(dict(user))
         conn.close()
+        print(user["organisation_uuid"])
 
-        self.logger.debug("decoded token %s for user %s", claims, user)
-        return user
+        user_dict: Dict[str, Any] = {
+            "user_id": user["user_id"],
+            "user_name": user["user_name"],
+            "email": user["email"],
+            "level_of_access": user["level_of_access"],
+            "hashed_password": user["hashed_password"],
+            "member_of": user["member_of"],
+        }
+
+        self.logger.debug("decoded token %s for user %s", claims, user_dict)
+        return user_dict
 
     async def signin(
         self,
@@ -288,10 +322,12 @@ class AuthImplemented(BaseAuth):
             self.logger.debug("requesters IP adress is %s", real_ip)
             try:
                 ipstack_res: Dict = self.ip2geo.get_location(real_ip)
-                location = f"{ipstack_res['location']['country_flag_emoji']} " \
-                           f"{ipstack_res['city']} / " \
-                           f"{ipstack_res['region_name']} / " \
-                           f"{ipstack_res['country_name']}"
+                location = (
+                    f"{ipstack_res['location']['country_flag_emoji']} "
+                    f"{ipstack_res['city']} / "
+                    f"{ipstack_res['region_name']} / "
+                    f"{ipstack_res['country_name']}"
+                )
             except Exception as exception:
                 self.logger.error(
                     "an error acquired when requesting ipstack: %s", exception
@@ -317,7 +353,6 @@ class AuthImplemented(BaseAuth):
             user_id = identifier
             try:
                 user_id = custom_charset(None, user_id)
-                user_id = starts_with("usr:")(None, user_id)
             except Exception as exception:
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
@@ -329,34 +364,36 @@ class AuthImplemented(BaseAuth):
             if email:
                 user = await self.database.fetch_one(
                     sa.sql.select(
-                        [self.users.c.user_uuid, self.users.c.hashed_password]
-                    ).where(
-                        self.users.c.email == email
-                    )
+                        [self.users.c.hashed_password, self.users.c.user_id]
+                    ).where(self.users.c.email == email)
                 )
+                user_id = user["user_id"]
             else:
                 user = await self.database.fetch_one(
                     sa.sql.select(
-                        [self.users.c.user_uuid, self.users.c.hashed_password]
-                    ).where(
-                        self.users.c.user_id == user_id
-                    )
+                        [self.users.c.hashed_password]
+                    ).where(self.users.c.user_id == user_id)
                 )
         except Exception as exception:
             self.logger.error(exception)
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="An error occurred when working with Auth DB. "
-                       "Check logs for more information.",
+                detail={
+                    "eng": "An error occurred when working with Auth DB",
+                    "rus": "Произошла ошибка при обращении к базе данных "
+                           "модуля авторизации",
+                }
             )
 
-        user_uuid = user["user_uuid"]
         hashed_password = user["hashed_password"]
 
         if not crypto_context.verify(password, hashed_password):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Incorrect password"
+                detail={
+                    "end": "Incorrect password",
+                    "rus": "Неправильный пароль",
+                }
             )
 
         now: datetime.datetime = datetime.datetime.now()
@@ -366,7 +403,7 @@ class AuthImplemented(BaseAuth):
             token_uuid=token_uuid,
             location=location,
             device=device,
-            issued_by=user_uuid,
+            issued_by=user_id,
             issued_at=str(now),
         )
 
@@ -376,14 +413,17 @@ class AuthImplemented(BaseAuth):
             self.logger.error(exception)
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="An error occurred when working with Auth DB. "
-                       "Check logs for more information.",
+                detail={
+                    "eng": "An error occurred when working with Auth DB",
+                    "rus": "Произошла ошибка при обращении к базе данных "
+                           "модуля авторизации",
+                }
             )
 
         header: Dict[str, str] = {"alg": "ES384", "typ": "JWT"}
         payload: Dict[str, Any] = {
             "iss": "paperback",
-            "sub": str(uuid.UUID(bytes=user_uuid)),
+            "sub": str(user_id),
             "exp": str(now + datetime.timedelta(days=2)),
             "iat": str(now),
             "jti": str(uuid.UUID(bytes=token_uuid)),
@@ -412,65 +452,71 @@ class AuthImplemented(BaseAuth):
     async def create_user(
         self,
         user_id: str,
-        email: EmailStr,
         password: str,
         level_of_access: int = 0,
-        organisation_id: Optional[str] = None,
+        email: Optional[EmailStr] = None,
+        member_of: Optional[str] = None,
         user_name: Optional[str] = None,
     ) -> Dict[str, Union[str, int, Any]]:
         await self.run_async()
 
-        org = await self.database.fetch_all(
-            self.organisations.select().where(
-                self.organisations.c.organisation_id == organisation_id
-            )
-        )
-
-        if len(org) == 0:
-            self.logger.error(
-                "can't find organisation with id %s", organisation_id
-            )
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=f"can't find organisation with id {organisation_id}",
-            )
-
         user = await self.database.fetch_all(
-            self.users.select().where(
-                self.users.c.user_id == user_id
-            )
+            self.users.select().where(self.users.c.user_id == user_id)
         )
         if len(user) > 0:
-            self.logger.error(
-                "user with id %s already exists", user_id
-            )
+            self.logger.error("user with id %s already exists", user_id)
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=f"user with id {user_id} already exists",
+                detail={
+                    "eng": f"user with id {user_id} already exists",
+                    "rus": f"пользователь с id {user_id} уже существует"
+                }
             )
+
+        if not member_of:
+            member_of = self.public_org_id
+        else:
+            org = await self.database.fetch_all(
+                self.organisations.select().where(
+                    self.organisations.c.organisation_id == member_of
+                )
+            )
+
+            if len(org) == 0:
+                self.logger.error(
+                    "can't find organisation with id %s", member_of
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=f"can't find organisation with id {member_of}",
+                )
+            else:
+                member_of = org[0]["organisation_id"]
 
         new_user = {
             "user_id": user_id,
-            "user_name": user_name,
             "email": email,
-            "level_of_access": level_of_access,
             "hashed_password": crypto_context.hash(password),
-            "user_uuid": uuid.uuid4().bytes,
-            "users_organisation_uuid": org[0]["organisation_uuid"],
+            "user_name": user_name,
+            "level_of_access": level_of_access,
+            "member_of": member_of,
         }
-        self.logger.debug("creating user with this info: %s", new_user)
         insert = self.users.insert().values(**new_user)
 
+        self.logger.debug("creating user with this info: %s", new_user)
         try:
             await self.database.execute(insert)
         except Exception as exception:
             self.logger.error(exception)
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="An error occurred when working with Auth DB. "
-                       "Check logs for more information.",
+                detail={
+                    "eng": "An error occurred when working with Auth DB",
+                    "rus": "Произошла ошибка при обращении к базе данных "
+                           "модуля авторизации",
+                }
             )
-        return dict(**new_user, organisation_id=org[0]["organisation_id"])
+        return new_user
 
     async def read_user(self, user_id: str) -> UserInfo:
         await self.run_async()
@@ -487,7 +533,7 @@ class AuthImplemented(BaseAuth):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="An error occurred when working with Auth DB. "
-                       "Check logs for more information.",
+                "Check logs for more information.",
             )
         return user
 
@@ -495,7 +541,7 @@ class AuthImplemented(BaseAuth):
         await self.run_async()
 
         self.logger.debug("querying all user")
-        select = sa.sql.select([self.users, self.organisations])
+        select = self.users.select()
 
         try:
             users = await self.database.fetch_all(select)
@@ -504,7 +550,7 @@ class AuthImplemented(BaseAuth):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="An error occurred when working with Auth DB. "
-                       "Check logs for more information.",
+                "Check logs for more information.",
             )
         return users
 
@@ -551,7 +597,7 @@ class AuthImplemented(BaseAuth):
             )
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=f"organisation with given organisation_id ({org.organisation_id}) already exists",
+                detail=f"organisation with given member_of ({org.organisation_id}) already exists",
             )
         else:
             self.logger.debug(
@@ -564,7 +610,7 @@ class AuthImplemented(BaseAuth):
         )
         new_org = {
             "uuid": uuid.uuid4().bytes,
-            "organisation_id": org.organisation_id,
+            "member_of": org.organisation_id,
             "name": org.organisation_name,
         }
         insert = self.organisations.insert().values(**new_org)
