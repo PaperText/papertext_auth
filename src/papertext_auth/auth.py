@@ -263,8 +263,24 @@ class AuthImplemented(BaseAuth):
         return case[curve]()
 
     def token2user(self, token: str) -> Dict[str, Union[str, int]]:
+        claim_option: Dict[str, Dict[str, Any]] = {
+            "iss": {
+                "essential": True,
+                "values": ["paperback"],
+            },
+            "sub": {
+                "essential": True,
+            },
+            "exp": {
+                "essential": True,
+            },
+            "jti": {
+                "essential": True,
+            },
+        }
         try:
-            claims = jwt.decode(token, self.public_key)
+            claims = jwt.decode(token, self.public_key, claims_options=claim_option)
+            claims.validate()
         except Exception as exception:
             self.logger.debug(token)
             self.logger.error("can't verify token")
@@ -276,7 +292,6 @@ class AuthImplemented(BaseAuth):
                     "rus": "невозможно верефецировать токен",
                 },
             )
-
 
         user_id: str = claims["sub"]
 
@@ -298,6 +313,11 @@ class AuthImplemented(BaseAuth):
 
         self.logger.debug("decoded token %s for user %s", claims, user_dict)
         return user_dict
+
+    def cleanup_tokens(self):
+        import time
+        time.sleep(10)
+        self.logger.debug("removing expired tokens")
 
     async def signin(
         self,
@@ -417,8 +437,8 @@ class AuthImplemented(BaseAuth):
         payload: Dict[str, Any] = {
             "iss": "paperback",
             "sub": str(user_id),
-            "exp": str(now + datetime.timedelta(days=2)),
-            "iat": str(now),
+            "exp": int(round((now + datetime.timedelta(minutes=1)).timestamp(), 0)),
+            "iat": int(round(now.timestamp(), 0)),
             "jti": str(uuid.UUID(bytes=token_uuid)),
         }
         self.logger.debug("created token %s for user %s", payload, user_id)
