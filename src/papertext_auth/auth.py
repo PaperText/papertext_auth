@@ -315,9 +315,24 @@ class AuthImplemented(BaseAuth):
         return user_dict
 
     def cleanup_tokens(self):
-        import time
-        time.sleep(10)
         self.logger.debug("removing expired tokens")
+        conn = self.engine.connect()
+        result = conn.execute(
+            sa.sql.select([self.tokens.c.token_uuid, self.tokens.c.issued_at])
+        )
+        for row in result:
+            dt = datetime.datetime.fromisoformat(row["issued_at"])
+            delta = datetime.datetime.now() - dt
+            self.logger.debug(
+                f"selected token with {row['token_uuid']=} {row['issued_at']=}"
+                f" {dt=} {delta=}"
+            )
+            if delta.days > 2 and delta.seconds > 2*60*60:
+                self.logger.debug(f"removing token with uuid {row['token_uuid']}")
+                conn.execute(self.tokens.delete().where(
+                    self.tokens.c.token_uuid == row["token_uuid"]
+                ))
+        conn.close()
 
     async def signin(
         self,
