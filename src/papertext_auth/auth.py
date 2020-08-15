@@ -452,7 +452,7 @@ class AuthImplemented(BaseAuth):
         payload: Dict[str, Any] = {
             "iss": "paperback",
             "sub": str(user_id),
-            "exp": int(round((now + datetime.timedelta(minutes=1)).timestamp(), 0)),
+            "exp": int(round((now + datetime.timedelta(days=2)).timestamp(), 0)),
             "iat": int(round(now.timestamp(), 0)),
             "jti": str(uuid.UUID(bytes=token_uuid)),
         }
@@ -489,15 +489,15 @@ class AuthImplemented(BaseAuth):
     ) -> Dict[str, Union[str, int, Any]]:
         await self.run_async()
 
-        user = await self.database.fetch_all(
+        users = await self.database.fetch_all(
             self.users.select().where(self.users.c.user_id == user_id)
         )
-        if len(user) > 0:
-            self.logger.error("user with id %s already exists", user_id)
+        if len(users) > 0:
+            self.logger.error("users with id %s already exists", user_id)
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail={
-                    "eng": f"user with id {user_id} already exists",
+                    "eng": f"users with id {user_id} already exists",
                     "rus": f"пользователь с id {user_id} уже существует"
                 }
             )
@@ -532,7 +532,7 @@ class AuthImplemented(BaseAuth):
         }
         insert = self.users.insert().values(**new_user)
 
-        self.logger.debug("creating user with this info: %s", new_user)
+        self.logger.debug("creating users with this info: %s", new_user)
         try:
             await self.database.execute(insert)
         except Exception as exception:
@@ -598,17 +598,39 @@ class AuthImplemented(BaseAuth):
         new_level_of_access: Optional[int] = None,
         new_organisation_id: Optional[str] = None,
     ) -> Dict[str, Union[str, int]]:
-        await self.run_async()
+        if new_user_id is not None:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={
+                    "eng": f"can't update users id",
+                    "rus": f"невозможно обновить id пользователя"
+                }
+            )
 
         values: Dict[str, Any] = {
             "user_id": new_user_id,
             "user_name": new_user_name,
             "level_of_access": new_level_of_access,
-            "organisation_id":new_organisation_id
+            "organisation_id": new_organisation_id
         }
         new_values: Dict[str, Any] = {
             key: val for key, val in values.items() if val is not None
         }
+
+        await self.run_async()
+
+        users = await self.database.fetch_all(
+            self.users.select().where(self.users.c.user_id == user_id)
+        )
+        if len(users) == 0:
+            self.logger.error("users with id %s doesn't exists", user_id)
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "eng": f"users with id {user_id} doesn't exists",
+                    "rus": f"пользователь с id {user_id} не существует"
+                }
+            )
 
         self.logger.debug("updating user with id %s", user_id)
         select = self.users.update().where(
@@ -628,7 +650,25 @@ class AuthImplemented(BaseAuth):
                 }
             )
 
-        return dict(user)
+        try:
+            updated_user = await self.database.fetch_one(
+                self.users.select().where(self.users.c.user_id == user_id)
+            )
+            if updated_user is None:
+                raise ValueError
+        except Exception as exception:
+            self.logger.error(exception)
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "eng": "An error occurred when working with Auth DB",
+                    "rus": "Произошла ошибка при обращении к базе данных "
+                           "модуля авторизации",
+                }
+            )
+        updated_user = dict(updated_user)
+        del updated_user["hashed_password"]
+        return updated_user
 
     async def update_user_password(
         self,
