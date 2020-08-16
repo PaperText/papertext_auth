@@ -29,7 +29,6 @@ from ipstack import GeoLookup
 from paperback.abc import BaseAuth
 from paperback.abc.models import custom_charset
 
-
 from .crypto import crypto_context
 
 
@@ -44,7 +43,7 @@ class AuthImplemented(BaseAuth):
             "dbname": "papertext",
         },
         "hash": {"algo": "pbkdf2_sha512"},
-        "token": {"curve": "secp521r1", "generate_keys": False,},
+        "token": {"curve": "secp521r1", "generate_keys": False, },
     }
 
     requires_dir: bool = True
@@ -114,8 +113,8 @@ class AuthImplemented(BaseAuth):
         self.logger.info("acquired JWT keys")
 
         self.logger.debug("setting up database")
-        database_url: str = f"postgresql://{cfg.db.username}:"\
-                            f"{cfg.db.password}@{cfg.db.host}:"\
+        database_url: str = f"postgresql://{cfg.db.username}:" \
+                            f"{cfg.db.password}@{cfg.db.host}:" \
                             f"{cfg.db.port}/{cfg.db.dbname}"
         self.database: Database = Database(database_url)
         self.engine: sa.engine.Engine = sa.create_engine(database_url)
@@ -248,7 +247,7 @@ class AuthImplemented(BaseAuth):
 
         def secp521r1():
             self.logger.debug("creating secp521r1 keys")
-            sk: ecdsa.SigningKey = ecdsa.SigningKey.from_pem( # noqa
+            sk: ecdsa.SigningKey = ecdsa.SigningKey.from_pem(  # noqa
                 self.private_key_file.read_text()
             )
             vk: ecdsa.VerifyingKey = sk.verifying_key
@@ -327,7 +326,7 @@ class AuthImplemented(BaseAuth):
                 f"selected token with {row['token_uuid']=} {row['issued_at']=}"
                 f" {dt=} {delta=}"
             )
-            if delta.days > 2 and delta.seconds > 2*60*60:
+            if delta.days > 2 and delta.seconds > 2 * 60 * 60:
                 self.logger.debug(f"removing token with uuid {row['token_uuid']}")
                 conn.execute(self.tokens.delete().where(
                     self.tokens.c.token_uuid == row["token_uuid"]
@@ -633,12 +632,12 @@ class AuthImplemented(BaseAuth):
             )
 
         self.logger.debug("updating user with id %s", user_id)
-        select = self.users.update().where(
+        update = self.users.update().where(
             self.users.c.user_id == user_id
         ).values(**new_values)
 
         try:
-            user = await self.database.execute(select)
+            await self.database.execute(update)
         except Exception as exception:
             self.logger.error(exception)
             raise HTTPException(
@@ -651,10 +650,10 @@ class AuthImplemented(BaseAuth):
             )
 
         try:
-            updated_user = await self.database.fetch_one(
+            user = await self.database.fetch_one(
                 self.users.select().where(self.users.c.user_id == user_id)
             )
-            if updated_user is None:
+            if user is None:
                 raise ValueError
         except Exception as exception:
             self.logger.error(exception)
@@ -666,30 +665,150 @@ class AuthImplemented(BaseAuth):
                            "модуля авторизации",
                 }
             )
-        updated_user = dict(updated_user)
-        del updated_user["hashed_password"]
-        return updated_user
+        user = dict(user)
+        del user["hashed_password"]
+        return user
 
     async def update_user_password(
         self,
-        username: str,
-        old_passwords: Optional[str] = None,
+        user_id: str,
+        old_password: Optional[str] = None,
         new_password: Optional[str] = None,
     ) -> Dict[str, Union[str, int]]:
-        pass
+        current_hash: str = crypto_context.hash(old_password)
+        new_hash: str = crypto_context.hash(new_password)
+
+        await self.run_async()
+
+        users = await self.database.fetch_all(
+            self.users.select().where(self.users.c.user_id == user_id)
+        )
+        if len(users) == 0:
+            self.logger.error("users with id %s doesn't exists", user_id)
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "eng": f"users with id {user_id} doesn't exists",
+                    "rus": f"пользователь с id {user_id} не существует"
+                }
+            )
+
+        user = users[0]
+        old_hash: str = user["hashed_password"]
+
+        if current_hash != old_hash:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "eng": f"incorrect password",
+                    "rus": f"неправильный пароль"
+                }
+            )
+
+        self.logger.debug("updating password of user with id %s", user["user_id"])
+        update = self.users.update().where(
+            self.users.c.user_id == user_id
+        ).values(hashed_password= new_hash)
+
+        try:
+            await self.database.execute(update)
+        except Exception as exception:
+            self.logger.error(exception)
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "eng": "An error occurred when working with Auth DB",
+                    "rus": "Произошла ошибка при обращении к базе данных "
+                           "модуля авторизации",
+                }
+            )
+
+        try:
+            user = await self.database.fetch_one(
+                self.users.select().where(self.users.c.user_id == user_id)
+            )
+            if user is None:
+                raise ValueError
+        except Exception as exception:
+            self.logger.error(exception)
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "eng": "An error occurred when working with Auth DB",
+                    "rus": "Произошла ошибка при обращении к базе данных "
+                           "модуля авторизации",
+                }
+            )
+        user = dict(user)
+        del user["hashed_password"]
+        return user
 
     async def update_user_email(
-        self, username: str, new_email: str
+        self, user_id: str, new_email: EmailStr
     ) -> Dict[str, Union[str, int]]:
-        pass
+        if new_email is not None:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={
+                    "eng": f"can't update users email",
+                    "rus": f"невозможно обновить email пользователя"
+                }
+            )
 
-    async def delete_user(self, username: str) -> NoReturn:
-        pass
+    async def delete_user(self, user_id: str):
+        await self.run_async()
+
+        users = await self.database.fetch_all(
+            self.users.select().where(self.users.c.user_id == user_id)
+        )
+        if len(users) == 0:
+            self.logger.error("users with id %s doesn't exists", user_id)
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "eng": f"users with id {user_id} doesn't exists",
+                    "rus": f"пользователь с id {user_id} не существует"
+                }
+            )
+
+        try:
+            await self.database.execute(
+                self.users.delete().where(self.users.c.user_id == user_id)
+            )
+        except Exception as exception:
+            self.logger.error(exception)
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "eng": "An error occurred when working with Auth DB",
+                    "rus": "Произошла ошибка при обращении к базе данных "
+                           "модуля авторизации",
+                }
+            )
+
+        try:
+            user = await self.database.fetch_one(
+                self.users.select().where(self.users.c.user_id == user_id)
+            )
+            if user is None:
+                raise ValueError
+        except Exception as exception:
+            self.logger.error(exception)
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "eng": "An error occurred when working with Auth DB",
+                    "rus": "Произошла ошибка при обращении к базе данных "
+                           "модуля авторизации",
+                }
+            )
+        user = dict(user)
+        del user["hashed_password"]
+        return user
 
     async def create_org(
         self, organisation_id: str, organisation_name: Optional[str] = None,
     ) -> Dict[str, Union[str, List[str]]]:
-
         # check if org with given this id exists
         self.logger.debug("checking for organisation with id %s", organisation_id)
         select_orgs_with_same_id = self.organisations.select().where(
@@ -796,12 +915,136 @@ class AuthImplemented(BaseAuth):
         self,
         old_organisation_id: str,
         new_organisation_id: Optional[str] = None,
-        new_name: Optional[str] = None,
-    ):
-        pass
+        new_organisation_name: Optional[str] = None,
+    ) -> Dict[str, str]:
+        if new_organisation_id is not None:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={
+                    "eng": f"can't update organisation id",
+                    "rus": f"невозможно обновить id организации"
+                }
+            )
 
-    async def delete_org(self, org_name: str):
-        pass
+        values: Dict[str, Any] = {
+            "new_organisation_name": new_organisation_name,
+            "new_organisation_id": new_organisation_id
+        }
+        new_values: Dict[str, Any] = {
+            key: val for key, val in values.items() if val is not None
+        }
+
+        await self.run_async()
+
+        orgs = await self.database.fetch_all(
+            self.organisations.select().where(
+                self.organisations.c.organisation_id == old_organisation_id
+            )
+        )
+        if len(orgs) == 0:
+            self.logger.error("users with id %s doesn't exists", old_organisation_id)
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "eng": f"organisation with id {old_organisation_id} doesn't exists",
+                    "rus": f"организации с id {old_organisation_id} не существует"
+                }
+            )
+
+        self.logger.debug("updating organisation with id %s", old_organisation_id)
+        update = self.organisations.update().where(
+            self.organisations.c.organisation_id == old_organisation_id
+        ).values(**new_values)
+
+        try:
+            await self.database.execute(update)
+        except Exception as exception:
+            self.logger.error(exception)
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "eng": "An error occurred when working with Auth DB",
+                    "rus": "Произошла ошибка при обращении к базе данных "
+                           "модуля авторизации",
+                }
+            )
+
+        try:
+            org = await self.database.fetch_one(
+                self.organisations.select().where(
+                    self.organisations.c.organisation_id == old_organisation_id
+                )
+            )
+            if org is None:
+                raise ValueError
+        except Exception as exception:
+            self.logger.error(exception)
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "eng": "An error occurred when working with Auth DB",
+                    "rus": "Произошла ошибка при обращении к базе данных "
+                           "модуля авторизации",
+                }
+            )
+        return dict(org)
+
+    async def delete_org(self, organisation_id: str):
+        await self.run_async()
+
+        orgs = await self.database.fetch_all(
+            self.organisations.select().where(
+                self.organisations.c.organisation_id == organisation_id
+            )
+        )
+        if len(orgs) == 0:
+            self.logger.error("users with id %s doesn't exists", organisation_id)
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "eng": f"organisation with id {organisation_id} doesn't exists",
+                    "rus": f"организации с id {organisation_id} не существует"
+                }
+            )
+
+        self.logger.debug("updating organisation with id %s", organisation_id)
+        delete = self.organisations.delete().where(
+            self.organisations.c.organisation_id == organisation_id
+        )
+
+        try:
+            await self.database.execute(delete)
+        except Exception as exception:
+            self.logger.error(exception)
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "eng": "An error occurred when working with Auth DB",
+                    "rus": "Произошла ошибка при обращении к базе данных "
+                           "модуля авторизации",
+                }
+            )
+
+        try:
+            org = await self.database.fetch_one(
+                self.organisations.select().where(
+                    self.organisations.c.organisation_id == organisation_id
+                )
+            )
+            if org is None:
+                raise ValueError
+        except Exception as exception:
+            self.logger.error(exception)
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "eng": "An error occurred when working with Auth DB",
+                    "rus": "Произошла ошибка при обращении к базе данных "
+                           "модуля авторизации",
+                }
+            )
+        return dict(org)
+
 
     async def create_invite_code(
         self, issuer: str, organisation_id: str
