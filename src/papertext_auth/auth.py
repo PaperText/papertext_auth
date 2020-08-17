@@ -183,6 +183,10 @@ class AuthImplemented(BaseAuth):
                 sa.String(256),
                 sa.ForeignKey("organisations.organisation_id"),
             ),
+            sa.Column(
+                "used_times",
+                sa.Integer,
+            ),
             extend_existing=True,
         )
         self.metadata.create_all(self.engine)
@@ -320,13 +324,14 @@ class AuthImplemented(BaseAuth):
             sa.sql.select([self.tokens.c.token_uuid, self.tokens.c.issued_at])
         )
         for row in result:
-            dt = datetime.datetime.fromisoformat(row["issued_at"])
-            delta = datetime.datetime.now() - dt
+            issued_at = datetime.datetime.fromisoformat(row["issued_at"])
+            delta = datetime.datetime.now() - issued_at
             self.logger.debug(
-                f"selected token with {row['token_uuid']=} {row['issued_at']=}"
-                f" {dt=} {delta=}"
+                f"selected token with {row['token_uuid']=}"
+                f"{issued_at=} {delta=}"
             )
-            if delta.days > 2 and delta.seconds > 2 * 60 * 60:
+            # delete tokens older than 2 days and 2 hours
+            if delta.total_seconds() >= (24*2 + 2) * 60 * 60:
                 self.logger.debug(f"removing token with uuid {row['token_uuid']}")
                 conn.execute(self.tokens.delete().where(
                     self.tokens.c.token_uuid == row["token_uuid"]
@@ -516,7 +521,10 @@ class AuthImplemented(BaseAuth):
                 )
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
-                    detail=f"can't find organisation with id {member_of}",
+                    detail={
+                        "end": f"can't find organisation with id {member_of}",
+                        "rus": f"организации с id {member_of} не существует"
+                    }
                 )
             else:
                 member_of = org[0]["organisation_id"]
@@ -786,26 +794,6 @@ class AuthImplemented(BaseAuth):
                 }
             )
 
-        try:
-            user = await self.database.fetch_one(
-                self.users.select().where(self.users.c.user_id == user_id)
-            )
-            if user is None:
-                raise ValueError
-        except Exception as exception:
-            self.logger.error(exception)
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail={
-                    "eng": "An error occurred when working with Auth DB",
-                    "rus": "Произошла ошибка при обращении к базе данных "
-                           "модуля авторизации",
-                }
-            )
-        user = dict(user)
-        del user["hashed_password"]
-        return user
-
     async def create_org(
         self, organisation_id: str, organisation_name: Optional[str] = None,
     ) -> Dict[str, Union[str, List[str]]]:
@@ -1025,14 +1013,55 @@ class AuthImplemented(BaseAuth):
                 }
             )
 
-        try:
-            org = await self.database.fetch_one(
-                self.organisations.select().where(
-                    self.organisations.c.organisation_id == organisation_id
-                )
+    async def create_invite_code(
+        self, issuer: str, code: str, add_to: str
+    ) -> Dict[str, Any]:
+        await self.run_async()
+
+        codes = await self.database.fetch_all(
+            self.invitation_codes.select().where(
+                self.invitation_codes.c.code == code
             )
-            if org is None:
-                raise ValueError
+        )
+        if len(codes) > 0:
+            self.logger.error("code %s already exists", code)
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "eng": f"code {code} already exists",
+                    "rus": f"код {code} уже существует"
+                }
+            )
+
+        org = await self.database.fetch_all(
+            self.organisations.select().where(
+                self.organisations.c.organisation_id == add_to
+            )
+        )
+
+        if len(org) < 0:
+            self.logger.error(
+                "can't find organisation with id %s", add_to
+            )
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "end": f"can't find organisation with id {add_to}",
+                    "rus": f"организации с id {add_to} не существует"
+                }
+            )
+
+        new_code = {
+            "invitation_code_uuid": uuid.uuid4(),
+            "code": code,
+            "issuer_id": issuer,
+            "add_to": add_to,
+        }
+        insert = self.invitation_codes.insert().values(**new_code)
+
+        self.logger.debug("creating users with this info: %s", new_code)
+        try:
+            await self.database.execute(insert)
         except Exception as exception:
             self.logger.error(exception)
             raise HTTPException(
@@ -1043,19 +1072,80 @@ class AuthImplemented(BaseAuth):
                            "модуля авторизации",
                 }
             )
-        return dict(org)
-
-
-    async def create_invite_code(
-        self, issuer: str, organisation_id: str
-    ) -> str:
-        pass
+        return new_code
 
     async def read_invite_code(self, code: str) -> Dict[str, str]:
-        pass
+        await self.run_async()
+
+        self.logger.debug("querying invitatiom_code with code %s", code)
+        select = self.invitation_codes.select().where(
+            self.invitation_codes.c.code == code
+        )
+
+        try:
+            code = await self.database.fetch_one(select)
+        except Exception as exception:
+            self.logger.error(exception)
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "eng": "An error occurred when working with Auth DB",
+                    "rus": "Произошла ошибка при обращении к базе данных "
+                           "модуля авторизации",
+                }
+            )
+        return dict(code)
 
     async def read_invite_codes(self) -> List[Dict[str, str]]:
-        pass
+        await self.run_async()
 
-    async def delete_invite_codes(self, code: str):
-        pass
+        self.logger.debug("querying all codes")
+        select = self.invitation_codes.select()
+
+        try:
+            raw_codes = await self.database.fetch_all(select)
+        except Exception as exception:
+            self.logger.error(exception)
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "eng": "An error occurred when working with Auth DB",
+                    "rus": "Произошла ошибка при обращении к базе данных "
+                           "модуля авторизации",
+                },
+            )
+        codes: List[Dict] = [dict(code) for code in raw_codes]
+        return codes
+
+    async def delete_invite_code(self, code: str):
+        await self.run_async()
+
+        codes = await self.database.fetch_all(
+            self.invitation_codes.select().where(self.invitation_codes.c.code == code)
+        )
+        if len(codes) == 0:
+            self.logger.error("invitation_code with code %s doesn't exists", code)
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "eng": f"invitation_code with code {code} doesn't exists",
+                    "rus": f"кода приглашения с кодом {code} не существует"
+                }
+            )
+
+        try:
+            await self.database.execute(
+                self.invitation_codes.delete().where(
+                    self.invitation_codes.c.code == code
+                )
+            )
+        except Exception as exception:
+            self.logger.error(exception)
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "eng": "An error occurred when working with Auth DB",
+                    "rus": "Произошла ошибка при обращении к базе данных "
+                           "модуля авторизации",
+                }
+            )
