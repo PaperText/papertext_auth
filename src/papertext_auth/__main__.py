@@ -39,21 +39,10 @@ class Scripts:
 
     @staticmethod
     def fix_isort():
-        call(f"python -m isort -rc {src_path}".split(" "))
+        call(f"python -m isort {src_path}".split(" "))
+
 
     @staticmethod
     def fix():
         Scripts.fix_black()
         Scripts.fix_isort()
-
-    @staticmethod
-    def docs_build():
-        call(
-            f"sphinx-build -b html {src_path / 'paperback_docs'} {source_path / 'docs'}".split(
-                " "
-            )
-        )
-
-    @staticmethod
-    def docs_clean():
-        call(f"rm -rf {source_path / 'docs'}".split(" "))
