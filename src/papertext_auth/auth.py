@@ -1,32 +1,31 @@
-import datetime
 import uuid
 import logging
+import datetime
 from types import SimpleNamespace
 from typing import (
     Any,
-    Callable,
     Dict,
     List,
     Tuple,
     Union,
     Mapping,
+    Callable,
     NoReturn,
     Optional,
 )
 from pathlib import Path
 from collections import defaultdict
 
-from authlib.jose import jwt
 import ecdsa
 import sqlalchemy as sa
-from fastapi import HTTPException, status, Request
-from databases import Database
-from pydantic import EmailStr
-from email_validator import EmailNotValidError, validate_email
-from user_agents import parse
+from fastapi import Request, HTTPException, status
 from ipstack import GeoLookup
-
+from pydantic import EmailStr
+from databases import Database
+from user_agents import parse
+from authlib.jose import jwt
 from paperback.abc import BaseAuth
+from email_validator import EmailNotValidError, validate_email
 from paperback.abc.models import custom_charset
 
 from .crypto import crypto_context
@@ -43,7 +42,7 @@ class AuthImplemented(BaseAuth):
             "dbname": "papertext",
         },
         "hash": {"algo": "pbkdf2_sha512"},
-        "token": {"curve": "secp521r1", "generate_keys": False, },
+        "token": {"curve": "secp521r1", "generate_keys": False,},
     }
 
     requires_dir: bool = True
@@ -113,9 +112,7 @@ class AuthImplemented(BaseAuth):
         self.logger.info("acquired JWT keys")
 
         self.logger.debug("setting up database")
-        database_url: str = f"postgresql://{cfg.db.username}:" \
-                            f"{cfg.db.password}@{cfg.db.host}:" \
-                            f"{cfg.db.port}/{cfg.db.dbname}"
+        database_url: str = f"postgresql://{cfg.db.username}:" f"{cfg.db.password}@{cfg.db.host}:" f"{cfg.db.port}/{cfg.db.dbname}"
         self.database: Database = Database(database_url)
         self.engine: sa.engine.Engine = sa.create_engine(database_url)
 
@@ -183,10 +180,7 @@ class AuthImplemented(BaseAuth):
                 sa.String(256),
                 sa.ForeignKey("organisations.organisation_id"),
             ),
-            sa.Column(
-                "used_times",
-                sa.Integer,
-            ),
+            sa.Column("used_times", sa.Integer,),
             extend_existing=True,
         )
         self.metadata.create_all(self.engine)
@@ -203,7 +197,9 @@ class AuthImplemented(BaseAuth):
         )
         org_with_same_id = conn.execute(select_org_with_same_id).fetchone()
         if org_with_same_id is not None:
-            self.logger.debug("public organisation %s already exists", dict(org_with_same_id))
+            self.logger.debug(
+                "public organisation %s already exists", dict(org_with_same_id)
+            )
             conn.close()
             return dict(org_with_same_id)
         else:
@@ -267,22 +263,15 @@ class AuthImplemented(BaseAuth):
 
     def token2user(self, token: str) -> Dict[str, Union[str, int]]:
         claim_option: Dict[str, Dict[str, Any]] = {
-            "iss": {
-                "essential": True,
-                "values": ["paperback"],
-            },
-            "sub": {
-                "essential": True,
-            },
-            "exp": {
-                "essential": True,
-            },
-            "jti": {
-                "essential": True,
-            },
+            "iss": {"essential": True, "values": ["paperback"],},
+            "sub": {"essential": True,},
+            "exp": {"essential": True,},
+            "jti": {"essential": True,},
         }
         try:
-            claims = jwt.decode(token, self.public_key, claims_options=claim_option)
+            claims = jwt.decode(
+                token, self.public_key, claims_options=claim_option
+            )
             claims.validate()
         except Exception as exception:
             self.logger.debug(token)
@@ -300,9 +289,7 @@ class AuthImplemented(BaseAuth):
 
         conn = self.engine.connect()
         user = conn.execute(
-            self.users.select().where(
-                self.users.c.user_id == user_id
-            )
+            self.users.select().where(self.users.c.user_id == user_id)
         ).fetchone()
         conn.close()
 
@@ -331,11 +318,15 @@ class AuthImplemented(BaseAuth):
                 f"{issued_at=} {delta=}"
             )
             # delete tokens older than 2 days and 2 hours
-            if delta.total_seconds() >= (24*2 + 2) * 60 * 60:
-                self.logger.debug(f"removing token with uuid {row['token_uuid']}")
-                conn.execute(self.tokens.delete().where(
-                    self.tokens.c.token_uuid == row["token_uuid"]
-                ))
+            if delta.total_seconds() >= (24 * 2 + 2) * 60 * 60:
+                self.logger.debug(
+                    f"removing token with uuid {row['token_uuid']}"
+                )
+                conn.execute(
+                    self.tokens.delete().where(
+                        self.tokens.c.token_uuid == row["token_uuid"]
+                    )
+                )
         conn.close()
 
     async def signin(
@@ -388,7 +379,7 @@ class AuthImplemented(BaseAuth):
                     detail={
                         "rus": "incorrect identifier",
                         "eng": "неправльный идентификатор",
-                    }
+                    },
                 )
 
         await self.run_async()
@@ -402,9 +393,9 @@ class AuthImplemented(BaseAuth):
                 user_id = user["user_id"]
             else:
                 user = await self.database.fetch_one(
-                    sa.sql.select(
-                        [self.users.c.hashed_password]
-                    ).where(self.users.c.user_id == user_id)
+                    sa.sql.select([self.users.c.hashed_password]).where(
+                        self.users.c.user_id == user_id
+                    )
                 )
         except Exception as exception:
             self.logger.error(exception)
@@ -413,8 +404,8 @@ class AuthImplemented(BaseAuth):
                 detail={
                     "eng": "An error occurred when working with Auth DB",
                     "rus": "Произошла ошибка при обращении к базе данных "
-                           "модуля авторизации",
-                }
+                    "модуля авторизации",
+                },
             )
 
         hashed_password = user["hashed_password"]
@@ -425,7 +416,7 @@ class AuthImplemented(BaseAuth):
                 detail={
                     "end": "Incorrect password",
                     "rus": "Неправильный пароль",
-                }
+                },
             )
 
         now: datetime.datetime = datetime.datetime.now()
@@ -448,15 +439,17 @@ class AuthImplemented(BaseAuth):
                 detail={
                     "eng": "An error occurred when working with Auth DB",
                     "rus": "Произошла ошибка при обращении к базе данных "
-                           "модуля авторизации",
-                }
+                    "модуля авторизации",
+                },
             )
 
         header: Dict[str, str] = {"alg": "ES384", "typ": "JWT"}
         payload: Dict[str, Any] = {
             "iss": "paperback",
             "sub": str(user_id),
-            "exp": int(round((now + datetime.timedelta(days=2)).timestamp(), 0)),
+            "exp": int(
+                round((now + datetime.timedelta(days=2)).timestamp(), 0)
+            ),
             "iat": int(round(now.timestamp(), 0)),
             "jti": str(uuid.UUID(bytes=token_uuid)),
         }
@@ -502,8 +495,8 @@ class AuthImplemented(BaseAuth):
                 status_code=status.HTTP_409_CONFLICT,
                 detail={
                     "eng": f"users with id {user_id} already exists",
-                    "rus": f"пользователь с id {user_id} уже существует"
-                }
+                    "rus": f"пользователь с id {user_id} уже существует",
+                },
             )
 
         if not member_of:
@@ -523,8 +516,8 @@ class AuthImplemented(BaseAuth):
                     status_code=status.HTTP_409_CONFLICT,
                     detail={
                         "end": f"can't find organisation with id {member_of}",
-                        "rus": f"организации с id {member_of} не существует"
-                    }
+                        "rus": f"организации с id {member_of} не существует",
+                    },
                 )
             else:
                 member_of = org[0]["organisation_id"]
@@ -549,8 +542,8 @@ class AuthImplemented(BaseAuth):
                 detail={
                     "eng": "An error occurred when working with Auth DB",
                     "rus": "Произошла ошибка при обращении к базе данных "
-                           "модуля авторизации",
-                }
+                    "модуля авторизации",
+                },
             )
         return new_user
 
@@ -558,9 +551,7 @@ class AuthImplemented(BaseAuth):
         await self.run_async()
 
         self.logger.debug("querying user with id %s", user_id)
-        select = self.users.select().where(
-            self.users.c.user_id == user_id
-        )
+        select = self.users.select().where(self.users.c.user_id == user_id)
 
         try:
             user = await self.database.fetch_one(select)
@@ -571,8 +562,8 @@ class AuthImplemented(BaseAuth):
                 detail={
                     "eng": "An error occurred when working with Auth DB",
                     "rus": "Произошла ошибка при обращении к базе данных "
-                           "модуля авторизации",
-                }
+                    "модуля авторизации",
+                },
             )
         return dict(user)
 
@@ -591,7 +582,7 @@ class AuthImplemented(BaseAuth):
                 detail={
                     "eng": "An error occurred when working with Auth DB",
                     "rus": "Произошла ошибка при обращении к базе данных "
-                           "модуля авторизации",
+                    "модуля авторизации",
                 },
             )
         users: List[Dict] = [dict(user) for user in raw_users]
@@ -610,15 +601,15 @@ class AuthImplemented(BaseAuth):
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail={
                     "eng": f"can't update users id",
-                    "rus": f"невозможно обновить id пользователя"
-                }
+                    "rus": f"невозможно обновить id пользователя",
+                },
             )
 
         values: Dict[str, Any] = {
             "user_id": new_user_id,
             "user_name": new_user_name,
             "level_of_access": new_level_of_access,
-            "organisation_id": new_organisation_id
+            "organisation_id": new_organisation_id,
         }
         new_values: Dict[str, Any] = {
             key: val for key, val in values.items() if val is not None
@@ -635,14 +626,16 @@ class AuthImplemented(BaseAuth):
                 status_code=status.HTTP_409_CONFLICT,
                 detail={
                     "eng": f"users with id {user_id} doesn't exists",
-                    "rus": f"пользователь с id {user_id} не существует"
-                }
+                    "rus": f"пользователь с id {user_id} не существует",
+                },
             )
 
         self.logger.debug("updating user with id %s", user_id)
-        update = self.users.update().where(
-            self.users.c.user_id == user_id
-        ).values(**new_values)
+        update = (
+            self.users.update()
+            .where(self.users.c.user_id == user_id)
+            .values(**new_values)
+        )
 
         try:
             await self.database.execute(update)
@@ -653,8 +646,8 @@ class AuthImplemented(BaseAuth):
                 detail={
                     "eng": "An error occurred when working with Auth DB",
                     "rus": "Произошла ошибка при обращении к базе данных "
-                           "модуля авторизации",
-                }
+                    "модуля авторизации",
+                },
             )
 
         try:
@@ -670,8 +663,8 @@ class AuthImplemented(BaseAuth):
                 detail={
                     "eng": "An error occurred when working with Auth DB",
                     "rus": "Произошла ошибка при обращении к базе данных "
-                           "модуля авторизации",
-                }
+                    "модуля авторизации",
+                },
             )
         user = dict(user)
         del user["hashed_password"]
@@ -697,8 +690,8 @@ class AuthImplemented(BaseAuth):
                 status_code=status.HTTP_409_CONFLICT,
                 detail={
                     "eng": f"users with id {user_id} doesn't exists",
-                    "rus": f"пользователь с id {user_id} не существует"
-                }
+                    "rus": f"пользователь с id {user_id} не существует",
+                },
             )
 
         user = users[0]
@@ -709,14 +702,18 @@ class AuthImplemented(BaseAuth):
                 status_code=status.HTTP_409_CONFLICT,
                 detail={
                     "eng": f"incorrect password",
-                    "rus": f"неправильный пароль"
-                }
+                    "rus": f"неправильный пароль",
+                },
             )
 
-        self.logger.debug("updating password of user with id %s", user["user_id"])
-        update = self.users.update().where(
-            self.users.c.user_id == user_id
-        ).values(hashed_password= new_hash)
+        self.logger.debug(
+            "updating password of user with id %s", user["user_id"]
+        )
+        update = (
+            self.users.update()
+            .where(self.users.c.user_id == user_id)
+            .values(hashed_password=new_hash)
+        )
 
         try:
             await self.database.execute(update)
@@ -727,8 +724,8 @@ class AuthImplemented(BaseAuth):
                 detail={
                     "eng": "An error occurred when working with Auth DB",
                     "rus": "Произошла ошибка при обращении к базе данных "
-                           "модуля авторизации",
-                }
+                    "модуля авторизации",
+                },
             )
 
         try:
@@ -744,8 +741,8 @@ class AuthImplemented(BaseAuth):
                 detail={
                     "eng": "An error occurred when working with Auth DB",
                     "rus": "Произошла ошибка при обращении к базе данных "
-                           "модуля авторизации",
-                }
+                    "модуля авторизации",
+                },
             )
         user = dict(user)
         del user["hashed_password"]
@@ -759,8 +756,8 @@ class AuthImplemented(BaseAuth):
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail={
                     "eng": f"can't update users email",
-                    "rus": f"невозможно обновить email пользователя"
-                }
+                    "rus": f"невозможно обновить email пользователя",
+                },
             )
 
     async def delete_user(self, user_id: str):
@@ -775,8 +772,8 @@ class AuthImplemented(BaseAuth):
                 status_code=status.HTTP_409_CONFLICT,
                 detail={
                     "eng": f"users with id {user_id} doesn't exists",
-                    "rus": f"пользователь с id {user_id} не существует"
-                }
+                    "rus": f"пользователь с id {user_id} не существует",
+                },
             )
 
         try:
@@ -790,15 +787,17 @@ class AuthImplemented(BaseAuth):
                 detail={
                     "eng": "An error occurred when working with Auth DB",
                     "rus": "Произошла ошибка при обращении к базе данных "
-                           "модуля авторизации",
-                }
+                    "модуля авторизации",
+                },
             )
 
     async def create_org(
         self, organisation_id: str, organisation_name: Optional[str] = None,
     ) -> Dict[str, Union[str, List[str]]]:
         # check if org with given this id exists
-        self.logger.debug("checking for organisation with id %s", organisation_id)
+        self.logger.debug(
+            "checking for organisation with id %s", organisation_id
+        )
         select_orgs_with_same_id = self.organisations.select().where(
             self.organisations.c.organisation_id == organisation_id
         )
@@ -814,7 +813,7 @@ class AuthImplemented(BaseAuth):
                 detail={
                     "eng": f"organisation with given organisation_id ({organisation_id}) already exists",
                     "rus": f"организация с данным идентификатором ({organisation_id}) уже существует",
-                }
+                },
             )
         else:
             self.logger.debug(
@@ -822,9 +821,7 @@ class AuthImplemented(BaseAuth):
             )
 
         # create organisation
-        self.logger.debug(
-            "creating organisation with id %s", organisation_id
-        )
+        self.logger.debug("creating organisation with id %s", organisation_id)
         new_org = {
             "uuid": uuid.uuid4().bytes,
             "member_of": organisation_id,
@@ -847,7 +844,7 @@ class AuthImplemented(BaseAuth):
                 detail={
                     "eng": "An error occurred when working with Auth DB",
                     "rus": "Произошла ошибка при обращении к базе данных "
-                           "модуля авторизации",
+                    "модуля авторизации",
                 },
             )
         return new_org
@@ -871,8 +868,8 @@ class AuthImplemented(BaseAuth):
                 detail={
                     "eng": "An error occurred when working with Auth DB",
                     "rus": "Произошла ошибка при обращении к базе данных "
-                           "модуля авторизации",
-                }
+                    "модуля авторизации",
+                },
             )
         return dict(org)
 
@@ -893,7 +890,7 @@ class AuthImplemented(BaseAuth):
                 detail={
                     "eng": "An error occurred when working with Auth DB",
                     "rus": "Произошла ошибка при обращении к базе данных "
-                           "модуля авторизации",
+                    "модуля авторизации",
                 },
             )
         orgs: List[Dict] = [dict(org) for org in raw_orgs]
@@ -910,13 +907,13 @@ class AuthImplemented(BaseAuth):
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail={
                     "eng": f"can't update organisation id",
-                    "rus": f"невозможно обновить id организации"
-                }
+                    "rus": f"невозможно обновить id организации",
+                },
             )
 
         values: Dict[str, Any] = {
             "new_organisation_name": new_organisation_name,
-            "new_organisation_id": new_organisation_id
+            "new_organisation_id": new_organisation_id,
         }
         new_values: Dict[str, Any] = {
             key: val for key, val in values.items() if val is not None
@@ -930,19 +927,25 @@ class AuthImplemented(BaseAuth):
             )
         )
         if len(orgs) == 0:
-            self.logger.error("users with id %s doesn't exists", old_organisation_id)
+            self.logger.error(
+                "users with id %s doesn't exists", old_organisation_id
+            )
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail={
                     "eng": f"organisation with id {old_organisation_id} doesn't exists",
-                    "rus": f"организации с id {old_organisation_id} не существует"
-                }
+                    "rus": f"организации с id {old_organisation_id} не существует",
+                },
             )
 
-        self.logger.debug("updating organisation with id %s", old_organisation_id)
-        update = self.organisations.update().where(
-            self.organisations.c.organisation_id == old_organisation_id
-        ).values(**new_values)
+        self.logger.debug(
+            "updating organisation with id %s", old_organisation_id
+        )
+        update = (
+            self.organisations.update()
+            .where(self.organisations.c.organisation_id == old_organisation_id)
+            .values(**new_values)
+        )
 
         try:
             await self.database.execute(update)
@@ -953,8 +956,8 @@ class AuthImplemented(BaseAuth):
                 detail={
                     "eng": "An error occurred when working with Auth DB",
                     "rus": "Произошла ошибка при обращении к базе данных "
-                           "модуля авторизации",
-                }
+                    "модуля авторизации",
+                },
             )
 
         try:
@@ -972,8 +975,8 @@ class AuthImplemented(BaseAuth):
                 detail={
                     "eng": "An error occurred when working with Auth DB",
                     "rus": "Произошла ошибка при обращении к базе данных "
-                           "модуля авторизации",
-                }
+                    "модуля авторизации",
+                },
             )
         return dict(org)
 
@@ -986,13 +989,15 @@ class AuthImplemented(BaseAuth):
             )
         )
         if len(orgs) == 0:
-            self.logger.error("users with id %s doesn't exists", organisation_id)
+            self.logger.error(
+                "users with id %s doesn't exists", organisation_id
+            )
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail={
                     "eng": f"organisation with id {organisation_id} doesn't exists",
-                    "rus": f"организации с id {organisation_id} не существует"
-                }
+                    "rus": f"организации с id {organisation_id} не существует",
+                },
             )
 
         self.logger.debug("updating organisation with id %s", organisation_id)
@@ -1009,8 +1014,8 @@ class AuthImplemented(BaseAuth):
                 detail={
                     "eng": "An error occurred when working with Auth DB",
                     "rus": "Произошла ошибка при обращении к базе данных "
-                           "модуля авторизации",
-                }
+                    "модуля авторизации",
+                },
             )
 
     async def create_invite_code(
@@ -1029,8 +1034,8 @@ class AuthImplemented(BaseAuth):
                 status_code=status.HTTP_409_CONFLICT,
                 detail={
                     "eng": f"code {code} already exists",
-                    "rus": f"код {code} уже существует"
-                }
+                    "rus": f"код {code} уже существует",
+                },
             )
 
         org = await self.database.fetch_all(
@@ -1040,15 +1045,13 @@ class AuthImplemented(BaseAuth):
         )
 
         if len(org) < 0:
-            self.logger.error(
-                "can't find organisation with id %s", add_to
-            )
+            self.logger.error("can't find organisation with id %s", add_to)
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail={
                     "end": f"can't find organisation with id {add_to}",
-                    "rus": f"организации с id {add_to} не существует"
-                }
+                    "rus": f"организации с id {add_to} не существует",
+                },
             )
 
         new_code = {
@@ -1069,8 +1072,8 @@ class AuthImplemented(BaseAuth):
                 detail={
                     "eng": "An error occurred when working with Auth DB",
                     "rus": "Произошла ошибка при обращении к базе данных "
-                           "модуля авторизации",
-                }
+                    "модуля авторизации",
+                },
             )
         return new_code
 
@@ -1091,8 +1094,8 @@ class AuthImplemented(BaseAuth):
                 detail={
                     "eng": "An error occurred when working with Auth DB",
                     "rus": "Произошла ошибка при обращении к базе данных "
-                           "модуля авторизации",
-                }
+                    "модуля авторизации",
+                },
             )
         return dict(code)
 
@@ -1111,7 +1114,7 @@ class AuthImplemented(BaseAuth):
                 detail={
                     "eng": "An error occurred when working with Auth DB",
                     "rus": "Произошла ошибка при обращении к базе данных "
-                           "модуля авторизации",
+                    "модуля авторизации",
                 },
             )
         codes: List[Dict] = [dict(code) for code in raw_codes]
@@ -1121,16 +1124,20 @@ class AuthImplemented(BaseAuth):
         await self.run_async()
 
         codes = await self.database.fetch_all(
-            self.invitation_codes.select().where(self.invitation_codes.c.code == code)
+            self.invitation_codes.select().where(
+                self.invitation_codes.c.code == code
+            )
         )
         if len(codes) == 0:
-            self.logger.error("invitation_code with code %s doesn't exists", code)
+            self.logger.error(
+                "invitation_code with code %s doesn't exists", code
+            )
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail={
                     "eng": f"invitation_code with code {code} doesn't exists",
-                    "rus": f"кода приглашения с кодом {code} не существует"
-                }
+                    "rus": f"кода приглашения с кодом {code} не существует",
+                },
             )
 
         try:
@@ -1146,6 +1153,6 @@ class AuthImplemented(BaseAuth):
                 detail={
                     "eng": "An error occurred when working with Auth DB",
                     "rus": "Произошла ошибка при обращении к базе данных "
-                           "модуля авторизации",
-                }
+                    "модуля авторизации",
+                },
             )
