@@ -205,7 +205,7 @@ class AuthImplemented(BaseAuth):
         else:
             self.logger.debug("public organisation doesn't exist")
             org = {
-                "member_of": self.public_org_id,
+                "organisation_id": self.public_org_id,
                 "organisation_name": "Публичная организация",
             }
             insert = self.organisations.insert().values(**org)
