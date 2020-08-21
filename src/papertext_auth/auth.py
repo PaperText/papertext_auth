@@ -10,11 +10,11 @@ from typing import (
     Union,
     Mapping,
     Callable,
-    NoReturn,
     Optional,
 )
 from pathlib import Path
 from collections import defaultdict
+import re
 
 import ecdsa
 import sqlalchemy as sa
@@ -171,7 +171,7 @@ class AuthImplemented(BaseAuth):
                 primary_key=True,
                 unique=True,
             ),
-            sa.Column("code", sa.Text()),
+            sa.Column("code", sa.Text(), unique=True,),
             sa.Column(
                 "issuer_id", sa.String(256), sa.ForeignKey("users.user_id"),
             ),
@@ -261,12 +261,12 @@ class AuthImplemented(BaseAuth):
         case["secp521r1"] = secp521r1
         return case[curve]()
 
-    def token2user(self, token: str) -> Dict[str, Union[str, int]]:
+    def validate_token(self, token: str) -> Dict[str, Any]:
         claim_option: Dict[str, Dict[str, Any]] = {
-            "iss": {"essential": True, "values": ["paperback"],},
-            "sub": {"essential": True,},
-            "exp": {"essential": True,},
-            "jti": {"essential": True,},
+            "iss": {"essential": True, "values": ["paperback"], },
+            "sub": {"essential": True, },
+            "exp": {"essential": True, },
+            "jti": {"essential": True, },
         }
         try:
             claims = jwt.decode(
@@ -284,6 +284,26 @@ class AuthImplemented(BaseAuth):
                     "rus": "невозможно верефецировать токен",
                 },
             )
+        token_uuid = claims["jti"]
+        conn = self.engine.connect()
+        select = self.tokens.select().where(
+            self.tokens.c.token_uuid == token_uuid
+        )
+        tokens = conn.execute(self).fetchall()
+        if len(tokens) == 0:
+            self.logger.debug(token)
+            self.logger.error("can't verify token")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={
+                    "end": "can't verify token",
+                    "rus": "токен был удалён",
+                },
+            )
+        return claims
+
+    def token2user(self, token: str) -> Dict[str, Union[str, int]]:
+        claims = self.validate_token(token)
 
         user_id: str = claims["sub"]
 
@@ -472,8 +492,74 @@ class AuthImplemented(BaseAuth):
     async def signout_everywhere(self, user_id: str):
         pass
 
-    async def delete_token(self, token: str) -> NoReturn:
-        pass
+    async def read_tokens(self, user_id: str):
+        await self.run_async()
+
+        self.logger.debug("querying all tokens of user with id %s", user_id)
+        select = self.tokens.select().where(
+            self.tokens.c.issued_by == user_id
+        )
+
+        try:
+            raw_tokens = await self.database.fetch_all(select)
+        except Exception as exception:
+            self.logger.error(exception)
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "eng": "An error occurred when working with Auth DB",
+                    "rus": "Произошла ошибка при обращении к базе данных "
+                           "модуля авторизации",
+                },
+            )
+        tokens = [dict(raw_token) for raw_token in raw_tokens]
+        return tokens
+
+    async def delete_token(self, token_identifier: str):
+        match = re.match(
+            r"^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}"
+            r"-[a-fA-F0-9]{12}$",
+            token_identifier
+        )
+        if match is None:
+            claims = self.validate_token(token_identifier)
+            token_uuid = claims["jti"]
+            self.logger.debug("removing token by uuid %s", token_uuid)
+        else:
+            token_uuid = token_identifier
+            self.logger.debug("removing token by uuid %s", token_uuid)
+        token_uuid = uuid.UUID(token_uuid).bytes
+
+
+        await self.run_async()
+
+        tokens = await self.database.fetch_all(
+            self.tokens.select().where(self.tokens.c.token_uuid == token_uuid)
+        )
+        if len(tokens) == 0:
+            self.logger.error("users with uuid %s doesn't exists", token_uuid)
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "eng": f"token with uuid {token_uuid} doesn't exists",
+                    "rus": f"токен с uuid {token_uuid} не существует",
+                },
+            )
+
+        try:
+            await self.database.execute(
+                self.tokens.delete().where(self.tokens.c.token_uuid == token_uuid)
+            )
+        except Exception as exception:
+            self.logger.error(exception)
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "eng": "An error occurred when working with Auth DB",
+                    "rus": "Произошла ошибка при обращении к базе данных "
+                           "модуля авторизации",
+                },
+            )
 
     async def create_user(
         self,
