@@ -41,7 +41,6 @@ class Scripts:
     def fix_isort():
         call(f"python -m isort {src_path}".split(" "))
 
-
     @staticmethod
     def fix():
         Scripts.fix_black()

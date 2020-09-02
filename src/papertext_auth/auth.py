@@ -1,32 +1,23 @@
-import uuid
-import logging
 import datetime
-from types import SimpleNamespace
-from typing import (
-    Any,
-    Dict,
-    List,
-    Tuple,
-    Union,
-    Mapping,
-    Callable,
-    Optional,
-)
-from pathlib import Path
-from collections import defaultdict
+import logging
 import re
+import uuid
+from collections import defaultdict
+from pathlib import Path
+from types import SimpleNamespace
+from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple, Union
 
 import ecdsa
 import sqlalchemy as sa
-from fastapi import Request, HTTPException, status
-from ipstack import GeoLookup
-from pydantic import EmailStr
-from databases import Database
-from user_agents import parse
 from authlib.jose import jwt
-from paperback.abc import BaseAuth
+from databases import Database
 from email_validator import EmailNotValidError, validate_email
+from fastapi import HTTPException, Request, status
+from ipstack import GeoLookup
+from paperback.abc import BaseAuth
 from paperback.abc.models import custom_charset
+from pydantic import EmailStr
+from user_agents import parse
 
 from .crypto import crypto_context
 
@@ -263,10 +254,10 @@ class AuthImplemented(BaseAuth):
 
     def validate_token(self, token: str) -> Dict[str, Any]:
         claim_option: Dict[str, Dict[str, Any]] = {
-            "iss": {"essential": True, "values": ["paperback"], },
-            "sub": {"essential": True, },
-            "exp": {"essential": True, },
-            "jti": {"essential": True, },
+            "iss": {"essential": True, "values": ["paperback"],},
+            "sub": {"essential": True,},
+            "exp": {"essential": True,},
+            "jti": {"essential": True,},
         }
         try:
             claims = jwt.decode(
@@ -496,9 +487,7 @@ class AuthImplemented(BaseAuth):
         await self.run_async()
 
         self.logger.debug("querying all tokens of user with id %s", user_id)
-        select = self.tokens.select().where(
-            self.tokens.c.issued_by == user_id
-        )
+        select = self.tokens.select().where(self.tokens.c.issued_by == user_id)
 
         try:
             raw_tokens = await self.database.fetch_all(select)
@@ -509,7 +498,7 @@ class AuthImplemented(BaseAuth):
                 detail={
                     "eng": "An error occurred when working with Auth DB",
                     "rus": "Произошла ошибка при обращении к базе данных "
-                           "модуля авторизации",
+                    "модуля авторизации",
                 },
             )
         tokens = [dict(raw_token) for raw_token in raw_tokens]
@@ -519,7 +508,7 @@ class AuthImplemented(BaseAuth):
         match = re.match(
             r"^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}"
             r"-[a-fA-F0-9]{12}$",
-            token_identifier
+            token_identifier,
         )
         if match is None:
             claims = self.validate_token(token_identifier)
@@ -529,7 +518,6 @@ class AuthImplemented(BaseAuth):
             token_uuid = token_identifier
             self.logger.debug("removing token by uuid %s", token_uuid)
         token_uuid = uuid.UUID(token_uuid).bytes
-
 
         await self.run_async()
 
@@ -548,7 +536,9 @@ class AuthImplemented(BaseAuth):
 
         try:
             await self.database.execute(
-                self.tokens.delete().where(self.tokens.c.token_uuid == token_uuid)
+                self.tokens.delete().where(
+                    self.tokens.c.token_uuid == token_uuid
+                )
             )
         except Exception as exception:
             self.logger.error(exception)
@@ -557,7 +547,7 @@ class AuthImplemented(BaseAuth):
                 detail={
                     "eng": "An error occurred when working with Auth DB",
                     "rus": "Произошла ошибка при обращении к базе данных "
-                           "модуля авторизации",
+                    "модуля авторизации",
                 },
             )
 
