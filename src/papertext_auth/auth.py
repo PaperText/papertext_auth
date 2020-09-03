@@ -275,12 +275,13 @@ class AuthImplemented(BaseAuth):
                     "rus": "невозможно верефецировать токен",
                 },
             )
-        token_uuid = claims["jti"]
+        token_uuid = uuid.UUID(claims["jti"]).bytes
+
         conn = self.engine.connect()
         select = self.tokens.select().where(
             self.tokens.c.token_uuid == token_uuid
         )
-        tokens = conn.execute(self).fetchall()
+        tokens = conn.execute(select).fetchall()
         if len(tokens) == 0:
             self.logger.debug(token)
             self.logger.error("can't verify token")
