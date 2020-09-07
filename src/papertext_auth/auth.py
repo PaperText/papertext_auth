@@ -143,7 +143,7 @@ class AuthImplemented(BaseAuth):
             "tokens",
             self.metadata,
             sa.Column(
-                "token_uuid", sa.Binary(16), primary_key=True, unique=True
+                "token_uuid", sa.LargeBinary(16), primary_key=True, unique=True
             ),
             sa.Column("location", sa.Text()),
             sa.Column("device", sa.Text()),
@@ -158,7 +158,7 @@ class AuthImplemented(BaseAuth):
             self.metadata,
             sa.Column(
                 "invitation_code_uuid",
-                sa.Binary(16),
+                sa.LargeBinary(16),
                 primary_key=True,
                 unique=True,
             ),
