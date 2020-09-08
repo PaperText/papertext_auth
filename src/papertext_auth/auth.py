@@ -103,7 +103,8 @@ class AuthImplemented(BaseAuth):
         self.logger.info("acquired JWT keys")
 
         self.logger.debug("setting up database")
-        database_url: str = f"postgresql://{cfg.db.username}:" f"{cfg.db.password}@{cfg.db.host}:" f"{cfg.db.port}/{cfg.db.dbname}"
+        database_url: str = f"postgresql://{self.cfg.db.username}:{self.cfg.db.password}@" \
+                            f"{self.cfg.db.host}:{self.cfg.db.port}/{self.cfg.db.dbname}"
         self.database: Database = Database(database_url)
         self.engine: sa.engine.Engine = sa.create_engine(database_url)
 
@@ -205,10 +206,9 @@ class AuthImplemented(BaseAuth):
             conn.close()
             return org
 
-    async def run_async(self):
-        if not self.database.is_connected:
-            self.logger.info("connected to Auth DB")
-            await self.database.connect()
+    async def __async__init__(self):
+        self.logger.info("connected to Auth DB")
+        await self.database.connect()
 
     def generate_keys(self, curve: str) -> Tuple[bytes, bytes]:
         def default():
@@ -394,7 +394,6 @@ class AuthImplemented(BaseAuth):
                     },
                 )
 
-        await self.run_async()
         try:
             if email:
                 user = await self.database.fetch_one(
@@ -485,8 +484,6 @@ class AuthImplemented(BaseAuth):
         pass
 
     async def read_tokens(self, user_id: str):
-        await self.run_async()
-
         self.logger.debug("querying all tokens of user with id %s", user_id)
         select = self.tokens.select().where(self.tokens.c.issued_by == user_id)
 
@@ -519,8 +516,6 @@ class AuthImplemented(BaseAuth):
             token_uuid = token_identifier
             self.logger.debug("removing token by uuid %s", token_uuid)
         token_uuid = uuid.UUID(token_uuid).bytes
-
-        await self.run_async()
 
         tokens = await self.database.fetch_all(
             self.tokens.select().where(self.tokens.c.token_uuid == token_uuid)
@@ -561,7 +556,17 @@ class AuthImplemented(BaseAuth):
         member_of: Optional[str] = None,
         user_name: Optional[str] = None,
     ) -> Dict[str, Union[str, int, Any]]:
-        await self.run_async()
+        self.logger.debug(
+            "creating user: %s",
+            {
+                "user_id": user_id,
+                "password": password,
+                "level_of_access": level_of_access,
+                "email": email,
+                "member_of": member_of,
+                "user_name": user_name,
+            }
+        )
 
         users = await self.database.fetch_all(
             self.users.select().where(self.users.c.user_id == user_id)
@@ -625,8 +630,6 @@ class AuthImplemented(BaseAuth):
         return new_user
 
     async def read_user(self, user_id: str) -> Dict[str, Any]:
-        await self.run_async()
-
         self.logger.debug("querying user with id %s", user_id)
         select = self.users.select().where(self.users.c.user_id == user_id)
 
@@ -645,8 +648,6 @@ class AuthImplemented(BaseAuth):
         return dict(user)
 
     async def read_users(self) -> List[Dict[str, Union[str, int]]]:
-        await self.run_async()
-
         self.logger.debug("querying all user")
         select = self.users.select()
 
@@ -691,8 +692,6 @@ class AuthImplemented(BaseAuth):
         new_values: Dict[str, Any] = {
             key: val for key, val in values.items() if val is not None
         }
-
-        await self.run_async()
 
         users = await self.database.fetch_all(
             self.users.select().where(self.users.c.user_id == user_id)
@@ -755,8 +754,6 @@ class AuthImplemented(BaseAuth):
     ) -> Dict[str, Union[str, int]]:
         current_hash: str = crypto_context.hash(old_password)
         new_hash: str = crypto_context.hash(new_password)
-
-        await self.run_async()
 
         users = await self.database.fetch_all(
             self.users.select().where(self.users.c.user_id == user_id)
@@ -838,8 +835,6 @@ class AuthImplemented(BaseAuth):
             )
 
     async def delete_user(self, user_id: str):
-        await self.run_async()
-
         users = await self.database.fetch_all(
             self.users.select().where(self.users.c.user_id == user_id)
         )
@@ -929,8 +924,6 @@ class AuthImplemented(BaseAuth):
     async def read_org(
         self, organisation_id: str
     ) -> Dict[str, Union[str, List[str]]]:
-        await self.run_async()
-
         self.logger.debug("querying organisation with id %s", organisation_id)
         select = self.organisations.select().where(
             self.organisations.c.organisation_id == organisation_id
@@ -953,8 +946,6 @@ class AuthImplemented(BaseAuth):
     async def read_orgs(
         self, columns: Optional[List[str]] = None
     ) -> List[Dict[str, str]]:
-        await self.run_async()
-
         self.logger.debug("querying all organisations")
         try:
             raw_orgs = await self.database.fetch_all(
@@ -995,8 +986,6 @@ class AuthImplemented(BaseAuth):
         new_values: Dict[str, Any] = {
             key: val for key, val in values.items() if val is not None
         }
-
-        await self.run_async()
 
         orgs = await self.database.fetch_all(
             self.organisations.select().where(
@@ -1058,8 +1047,6 @@ class AuthImplemented(BaseAuth):
         return dict(org)
 
     async def delete_org(self, organisation_id: str):
-        await self.run_async()
-
         orgs = await self.database.fetch_all(
             self.organisations.select().where(
                 self.organisations.c.organisation_id == organisation_id
@@ -1098,8 +1085,6 @@ class AuthImplemented(BaseAuth):
     async def create_invite_code(
         self, issuer: str, code: str, add_to: str
     ) -> Dict[str, Any]:
-        await self.run_async()
-
         codes = await self.database.fetch_all(
             self.invitation_codes.select().where(
                 self.invitation_codes.c.code == code
@@ -1155,8 +1140,6 @@ class AuthImplemented(BaseAuth):
         return new_code
 
     async def read_invite_code(self, code: str) -> Dict[str, str]:
-        await self.run_async()
-
         self.logger.debug("querying invitatiom_code with code %s", code)
         select = self.invitation_codes.select().where(
             self.invitation_codes.c.code == code
@@ -1177,8 +1160,6 @@ class AuthImplemented(BaseAuth):
         return dict(code)
 
     async def read_invite_codes(self) -> List[Dict[str, str]]:
-        await self.run_async()
-
         self.logger.debug("querying all codes")
         select = self.invitation_codes.select()
 
@@ -1198,8 +1179,6 @@ class AuthImplemented(BaseAuth):
         return codes
 
     async def delete_invite_code(self, code: str):
-        await self.run_async()
-
         codes = await self.database.fetch_all(
             self.invitation_codes.select().where(
                 self.invitation_codes.c.code == code
