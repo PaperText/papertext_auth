@@ -15,16 +15,14 @@ def call_container_manager(container_manager: str) -> NoReturn:
          "-e POSTGRES_DB=papertext "
          "-p 5432:5432 "
          f"-v {getenv('HOME')}/.papertext/postgresql:/var/lib/postgresql/data:z "
-         "postgres".split(" "))
+         "postgres:13".split(" "))
 
 
 def start_db():
     try:
-        container_manager = "podman"
-        call_container_manager(container_manager)
+        call_container_manager("podman")
     except FileNotFoundError:
-        container_manager = "docker"
-        call_container_manager(container_manager)
+        call_container_manager("docker")
 
 
 if __name__ == "__main__":
