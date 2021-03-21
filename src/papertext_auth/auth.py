@@ -43,6 +43,8 @@ class AuthImplemented(BaseAuth):
         self.logger.setLevel(logging.getLogger("paperback").level)
         self.logger.info("initializing papertext_auth module")
 
+        self.logger.debug("using storage dir %s", storage_dir)
+        self.logger.debug("using config %s", cfg)
         self.storage_dir = storage_dir
         self.cfg = cfg
         # TODO: add check for configuration,
