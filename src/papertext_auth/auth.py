@@ -45,8 +45,8 @@ class AuthImplemented(BaseAuth):
 
         self.logger.debug("using storage dir %s", storage_dir)
         self.logger.debug("using config %s", cfg)
-        self.storage_dir = storage_dir
-        self.cfg = cfg
+        self.storage_dir: Path = storage_dir
+        self.cfg: SimpleNamespace = cfg
         # TODO: add check for configuration,
         #  i.e. that hash.algo lib and token.curve lib are present
 
