@@ -1,5 +1,6 @@
 root = true
 
+# default style with python in mind
 [*]
 charset = utf-8
 indent_size = 4
@@ -8,8 +9,10 @@ trim_trailing_whitespace = true
 end_of_line = lf
 insert_final_newline = true
 
+# leave trailing whitespace in MarkDown files
 [*.md]
 trim_trailing_whitespace = false
 
+# decrease overall width of config files
 [*.{toml,yaml,yml,json}]
 indent_size = 2
