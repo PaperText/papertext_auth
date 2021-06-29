@@ -1,15 +1,12 @@
 from pathlib import Path
-from subprocess import call
 from shlex import split
+from subprocess import call
 
 src_path = Path(__file__) / ".." / ".."
 src_path = src_path.resolve()
 
 source_path = src_path / ".."
 source_path = source_path.resolve()
-
-docs_path = source_path / "docs"
-docs_path = docs_path.resolve()
 
 pyproject_path = source_path / "pyproject.toml"
 pyproject_path = pyproject_path.resolve()
@@ -18,8 +15,8 @@ pyproject_path = pyproject_path.resolve()
 class Scripts:
     @staticmethod
     def pretty_print(string):
-        print("+-"+"-"*len(string)+"-+")
-        print("| "+str(string)+" |")
+        print("+-" + "-" * len(string) + "-+")
+        print("| " + str(string) + " |")
         print("+-" + "-" * len(string) + "-+")
 
     @staticmethod
@@ -44,7 +41,9 @@ class Scripts:
     @staticmethod
     def fix_black():
         Scripts.pretty_print("black fixer")
-        Scripts.execute(f"python -m black {src_path} --config {pyproject_path}")
+        Scripts.execute(
+            f"python -m black {src_path} --config {pyproject_path}"
+        )
 
     @staticmethod
     def fix_isort():

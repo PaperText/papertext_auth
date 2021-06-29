@@ -105,8 +105,7 @@ class AuthImplemented(BaseAuth):
         self.logger.info("acquired JWT keys")
 
         self.logger.debug("setting up database")
-        database_url: str = f"postgresql://{self.cfg.db.username}:{self.cfg.db.password}@" \
-                            f"{self.cfg.db.host}:{self.cfg.db.port}/{self.cfg.db.dbname}"
+        database_url: str = f"postgresql://{self.cfg.db.username}:{self.cfg.db.password}@" f"{self.cfg.db.host}:{self.cfg.db.port}/{self.cfg.db.dbname}"
         self.database: Database = Database(database_url)
         self.engine: sa.engine.Engine = sa.create_engine(database_url)
 
@@ -567,7 +566,7 @@ class AuthImplemented(BaseAuth):
                 "email": email,
                 "member_of": member_of,
                 "user_name": user_name,
-            }
+            },
         )
 
         users = await self.database.fetch_all(
