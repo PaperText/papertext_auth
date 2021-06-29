@@ -1,14 +1,24 @@
+[build-system]
+requires = ["poetry_core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
+
 [tool.poetry]
 name = "papertext_auth"
 version = "0.1.0"
-description = ""
-authors = ["Danil Kireev <kireev@isa.ru>"]
+description = "standard implementation of auth module for paperback"
+authors = ["Danil Kireev <unrndm@gmail.com>"]
 license = "MIT"
 readme="README.md"
+homepage="https://gitlab.com/papertext/papertext_auth"
+repository="https://gitlab.com/papertext/papertext_auth"
+include = ["LICENSE", "pyproject.toml"]
+
+[tool.poetry.urls]
+"Issue Tracker" = "https://gitlab.com/papertext/papertext_auth/-/issues"
 
 [tool.poetry.scripts]
-lint = "papertext_auth.__main__:Scripts.lint"
-fix = "papertext_auth.__main__:Scripts.fix"
+fix = "paperback.scripts:Scripts.fix"
+lint = "paperback.scripts:Scripts.lint"
 
 [tool.poetry.plugins."paperback.modules"]
 auth = "papertext_auth:AuthImplemented"
@@ -18,58 +28,84 @@ python = "^3.8"
 sqlalchemy = "^1.3.13"
 passlib = "^1.7.2"
 databases = {version = "^0.4.0", extras = ["postgresql"]}
-argon2-cffi = {version="^20.1.0", optional=true}
 ecdsa = "^0.15"
-gmpy2 = {version="^2.0.8", optional=true}
 authlib = "^0.15.0"
 ua-parser = "^0.10.0"
 user-agents = "^2.1"
 pyyaml = "^5.3.1"
 ipstack = "^0.1.4"
-
-[tool.poetry.dev-dependencies]
-pytest = "^6.0"
-flake8 = "^3.7"
-flakehell = "^0.7.0"
-flake8-fixme = "^1.1"
-pep8-naming = "^0.11.1"
-black = "19.10b0"
-isort = "^5.3"
-mypy = "^0.782"
-rope = "^0.18.0"
-sqlalchemy-stubs = "^0.3"
+argon2-cffi = {version="^20.1.0", optional=true}
+gmpy2 = {version="^2.0.8", optional=true}
 
 [tool.poetry.extras]
 argon2 = ["argon2-cffi"]
 fast_ecdsa = ["gmpy2"]
 
-[tool.flakehell]
-exclude = ["__pycahce__"]
-format = "grouped"
-show_source = true
-max_line_length = 79
-
-[tool.flakehell.plugins]
-"flake8-fixme" = ["+*"]
-"pep8-naming" = ["+*"]
-"mccabe" = ["+*"]
-"pycodestyle" = ["+*"]
-"pyflakes" = ["+*"]
-"pylint" = ["+*"]
+[tool.poetry.dev-dependencies]
+# testing framework
+pytest = "^6.0"
+# fixer
+black = "19.10b0"
+# flake8 linter but with pyproject.toml support
+flake9 = "^3.8.3"
+# flake-8 plugins
+darglint = "^1.8.0"
+# flake8-fixme = "^1.1"
+# flake8-pie = "^0.14.0"
+pep8-naming = "^0.11.1"
+flake8-black = "^0.2.1"
+flake8-isort = "^4.0.0"
+flake8-length = "^0.1.0"
+# flake8-return = "^1.1.3"
+# flake8-mutable = "^1.2.0"
+# flake8-bugbear = "^21.4.3"
+# flake8-builtins = "^1.5.3"
+# flake8-assertive = "^1.3.0"
+# flake8-eradicate = "^1.1.0"
+# flake8-simplify = "^0.14.1"
+# flake8-use-fstring = "^1.1"
+flake8-docstrings = "^1.6.0"
+# flake8-annotations = "^2.6.2"
+# flake8-pytest-style = "^1.5.0"
+# flake8-type-checking = "^1.0.3"
+# flake8-annotations-coverage = "^0.0.5"
+# flake8-cognitive-complexity = "^0.1.0"
+# fixer
+isort = "^5.3"
+# typing linter
+mypy = "^0.910"
+# plugin for mypy and sqlalchemy
+sqlalchemy-stubs = "^0.3"
+# codium dependency for renaming
+rope = "^0.18.0"
 
 [tool.black]
 target-version = ['py38']
 line_length = 79
 
+[tool.flake8]
+exclude = ["__pycahce__"]
+max-line-length = 79
+ignore = [
+  # line length error
+  "E501",
+  # line length warning
+  "W505",
+  # ignore `flake8-annotations`
+  "ANN",]
+# enable `flake8-type-checking`
+enable-extensions = ["TC", "TC1"]
+docstring-convention="numpy"
+
 [tool.isort]
 profile="black"
-force_alphabetical_sort_within_sections=true
-skip_gitignore=true
+line_length=79
+py_version="38"
 color_output=true
-
-[build-system]
-requires = ["poetry>=0.12"]
-build-backend = "poetry.masonry.api"
+skip_gitignore=true
+group_by_package=true
+src_paths = ["src", "tests"]
+force_alphabetical_sort_within_sections=true
 
 [tool.mypy]
-plugins = "pydantic.mypy"
+plugins = ["pydantic.mypy", "sqlmypy"]
