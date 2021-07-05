@@ -37,7 +37,10 @@ class AuthImplemented(BaseAuth):
             "db": "papertext",
         },
         "hash": {"algo": "pbkdf2_sha512"},
-        "token": {"curve": "secp521r1", "generate_keys": False,},
+        "token": {
+            "curve": "secp521r1",
+            "generate_keys": False,
+        },
     }
 
     requires_dir: bool = True
@@ -109,7 +112,10 @@ class AuthImplemented(BaseAuth):
         self.logger.info("acquired JWT keys")
 
         self.logger.debug("setting up database")
-        database_url: str = f"postgresql://{self.cfg.db.username}:{self.cfg.db.password}@" f"{self.cfg.db.host}:{self.cfg.db.port}/{self.cfg.db.db}"
+        database_url: str = (
+            f"postgresql://{self.cfg.db.username}:{self.cfg.db.password}@"
+            f"{self.cfg.db.host}:{self.cfg.db.port}/{self.cfg.db.db}"
+        )
         self.logger.debug("database url: %s", database_url)
         self.logger.debug("connecting to database")
         self.database: Database = Database(database_url)
@@ -157,7 +163,9 @@ class AuthImplemented(BaseAuth):
             sa.Column("location", sa.Text()),
             sa.Column("device", sa.Text()),
             sa.Column(
-                "issued_by", sa.String(256), sa.ForeignKey("users.user_id"),
+                "issued_by",
+                sa.String(256),
+                sa.ForeignKey("users.user_id"),
             ),
             sa.Column("issued_at", sa.Text()),
             extend_existing=True,
@@ -171,16 +179,25 @@ class AuthImplemented(BaseAuth):
                 primary_key=True,
                 unique=True,
             ),
-            sa.Column("code", sa.Text(), unique=True,),
             sa.Column(
-                "issuer_id", sa.String(256), sa.ForeignKey("users.user_id"),
+                "code",
+                sa.Text(),
+                unique=True,
+            ),
+            sa.Column(
+                "issuer_id",
+                sa.String(256),
+                sa.ForeignKey("users.user_id"),
             ),
             sa.Column(
                 "add_to",
                 sa.String(256),
                 sa.ForeignKey("organisations.organisation_id"),
             ),
-            sa.Column("used_times", sa.Integer,),
+            sa.Column(
+                "used_times",
+                sa.Integer,
+            ),
             extend_existing=True,
         )
         self.metadata.create_all(self.engine)
@@ -216,7 +233,9 @@ class AuthImplemented(BaseAuth):
             conn.close()
             return org
 
-    async def create_root_user(self, username: str, password: str, public_org_id: str) -> Dict[str, str]:
+    async def create_root_user(
+        self, username: str, password: str, public_org_id: str
+    ) -> Dict[str, str]:
         self.logger.debug("creating root user")
 
         users_with_same_name = await self.database.fetch_all(
@@ -224,15 +243,23 @@ class AuthImplemented(BaseAuth):
         )
 
         if len(users_with_same_name) > 1:
-            self.logger.error("found multiple users with root user_id %s", username)
-            raise Exception(f"found multiple users with root user_id {username}")
+            self.logger.error(
+                "found multiple users with root user_id %s", username
+            )
+            raise Exception(
+                f"found multiple users with root user_id {username}"
+            )
         elif len(users_with_same_name) == 1:
             root_user = users_with_same_name[0]
             self.logger.info("root user_id %s already exists", username)
             loa = root_user["level_of_access"]
             if loa < 3:
-                self.logger.error("root user doesn't have correct level of access")
-                raise Exception("root user doesn't have correct level of access")
+                self.logger.error(
+                    "root user doesn't have correct level of access"
+                )
+                raise Exception(
+                    "root user doesn't have correct level of access"
+                )
         elif len(users_with_same_name) == 0:
             self.logger.info("creating root user with %s user_id", username)
             root_user = {
@@ -259,7 +286,9 @@ class AuthImplemented(BaseAuth):
         self.logger.debug("connected to Auth DB")
 
         self.logger.debug("creating root user")
-        self.root_user: Dict[str, str] = await self.create_root_user(**self.cfg.root, public_org_id=self.public_org_id)
+        self.root_user: Dict[str, str] = await self.create_root_user(
+            **self.cfg.root, public_org_id=self.public_org_id
+        )
         self.logger.info("created root user")
 
     def generate_keys(self, curve: str) -> Tuple[bytes, bytes]:
@@ -306,10 +335,19 @@ class AuthImplemented(BaseAuth):
 
     def validate_token(self, token: str) -> Dict[str, Any]:
         claim_option: Dict[str, Dict[str, Any]] = {
-            "iss": {"essential": True, "values": ["paperback"],},
-            "sub": {"essential": True,},
-            "exp": {"essential": True,},
-            "jti": {"essential": True,},
+            "iss": {
+                "essential": True,
+                "values": ["paperback"],
+            },
+            "sub": {
+                "essential": True,
+            },
+            "exp": {
+                "essential": True,
+            },
+            "jti": {
+                "essential": True,
+            },
         }
         try:
             claims = jwt.decode(
@@ -916,7 +954,9 @@ class AuthImplemented(BaseAuth):
             )
 
     async def create_org(
-        self, organisation_id: str, organisation_name: Optional[str] = None,
+        self,
+        organisation_id: str,
+        organisation_name: Optional[str] = None,
     ) -> Dict[str, Union[str, List[str]]]:
         # check if org with given this id exists
         self.logger.debug(
