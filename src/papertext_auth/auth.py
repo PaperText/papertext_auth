@@ -25,6 +25,10 @@ from .crypto import crypto_context
 class AuthImplemented(BaseAuth):
     DEFAULTS: Mapping[str, Union[str, Mapping[str, Union[str, bool]]]] = {
         "IPstack_api_key": "",
+        "root": {
+            "username": "root",
+            "password": "root",
+        },
         "db": {
             "host": "127.0.0.1",
             "port": "5432",
@@ -107,7 +111,9 @@ class AuthImplemented(BaseAuth):
         self.logger.debug("setting up database")
         database_url: str = f"postgresql://{self.cfg.db.username}:{self.cfg.db.password}@" f"{self.cfg.db.host}:{self.cfg.db.port}/{self.cfg.db.db}"
         self.logger.debug("database url: %s", database_url)
+        self.logger.debug("connecting to database")
         self.database: Database = Database(database_url)
+        self.logger.debug("connected to database")
         self.engine: sa.engine.Engine = sa.create_engine(database_url)
 
         self.logger.debug("setting up tables")
@@ -179,9 +185,11 @@ class AuthImplemented(BaseAuth):
         )
         self.metadata.create_all(self.engine)
 
-        self.logger.info("connected to database")
+        self.logger.info("set up tables")
 
+        self.logger.debug("creating publiv organisation")
         self.public_org: Dict[str, str] = self.create_public_org()
+        self.logger.info("created publiv organisation")
 
     def create_public_org(self) -> Dict[str, str]:
         self.logger.debug("creating basic organisation")
@@ -208,9 +216,51 @@ class AuthImplemented(BaseAuth):
             conn.close()
             return org
 
+    async def create_root_user(self, username: str, password: str, public_org_id: str) -> Dict[str, str]:
+        self.logger.debug("creating root user")
+
+        users_with_same_name = await self.database.fetch_all(
+            self.users.select().where(self.users.c.user_id == username)
+        )
+
+        if len(users_with_same_name) > 1:
+            self.logger.error("found multiple users with root user_id %s", username)
+            raise Exception(f"found multiple users with root user_id {username}")
+        elif len(users_with_same_name) == 1:
+            root_user = users_with_same_name[0]
+            self.logger.info("root user_id %s already exists", username)
+            loa = root_user["level_of_access"]
+            if loa < 3:
+                self.logger.error("root user doesn't have correct level of access")
+                raise Exception("root user doesn't have correct level of access")
+        elif len(users_with_same_name) == 0:
+            self.logger.info("creating root user with %s user_id", username)
+            root_user = {
+                "user_id": username,
+                "email": "root@papertext.ru",
+                "hashed_password": crypto_context.hash(password),
+                "user_name": "root",
+                "level_of_access": 3,
+                "member_of": public_org_id,
+            }
+            insert = self.users.insert().values(**root_user)
+            try:
+                await self.database.execute(insert)
+            except Exception as exception:
+                self.logger.info("can't create root user")
+                self.logger.error(exception)
+                raise
+            self.logger.debug("created new root user")
+            return root_user
+
     async def __async__init__(self):
         self.logger.info("connected to Auth DB")
         await self.database.connect()
+        self.logger.debug("connected to Auth DB")
+
+        self.logger.debug("creating root user")
+        self.root_user: Dict[str, str] = await self.create_root_user(**self.cfg.root, public_org_id=self.public_org_id)
+        self.logger.info("created root user")
 
     def generate_keys(self, curve: str) -> Tuple[bytes, bytes]:
         def default():
