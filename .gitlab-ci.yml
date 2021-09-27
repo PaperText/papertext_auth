@@ -1,0 +1,26 @@
+variables:
+  GIT_DEPTH: 1
+  GIT_SUBMODULE_STRATEGY: none
+  GROUP_NAME: papertext
+  PROJECT_NAME: papertext_auth
+
+stages:
+  - deploy
+
+deploy prod:
+  stage: deploy
+  only:
+    refs:
+      - prod
+  trigger:
+    project: papertext/dev
+    branch: prod
+
+deploy dev:
+  stage: deploy
+  only:
+    refs:
+      - dev
+  trigger:
+    project: papertext/dev
+    branch: dev
