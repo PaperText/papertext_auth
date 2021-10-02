@@ -13,7 +13,7 @@ deploy prod:
     refs:
       - prod
   trigger:
-    project: papertext/dev
+    project: papertext/papertext_dev
     branch: prod
 
 deploy dev:
@@ -22,5 +22,5 @@ deploy dev:
     refs:
       - dev
   trigger:
-    project: papertext/dev
+    project: papertext/papertext_dev
     branch: dev
